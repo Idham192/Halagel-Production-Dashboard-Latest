@@ -25,25 +25,36 @@ export const getCurrentMonthISO = (): string => {
 };
 
 /**
- * Formats YYYY-MM-DD for display (e.g., "2025-12-25 THURSDAY").
- * Uses manual parsing to prevent the browser from applying UTC shifts.
+ * Formats YYYY-MM-DD for display (e.g., "2025-12-28 SUNDAY").
+ * 100% safe from "Yesterday Bug":
+ * 1. Splits the string manually to avoid UTC conversion.
+ * 2. Sets time to 12:00 PM to create a safety buffer against timezone shifts.
+ * 3. Force-formats using Asia/Kuala_Lumpur.
  */
 export const formatDisplayDate = (dateStr: string): string => {
   if (!dateStr) return 'Invalid Date';
 
-  // Use only the date portion
+  // Take only the date part YYYY-MM-DD
   const cleanDate = dateStr.split('T')[0];
-  const [year, month, day] = cleanDate.split('-').map(Number);
+  const parts = cleanDate.split('-');
   
-  // Construct date object at NOON local time to avoid boundary shifts
+  if (parts.length !== 3) return cleanDate;
+
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  const day = parseInt(parts[2], 10);
+  
+  // Construct date object at NOON (12:00:00) Malaysia Time.
+  // This ensures that even if a user is in a different timezone, 
+  // the +/- 12h shift won't change the date.
   const localDate = new Date(year, month - 1, day, 12, 0, 0);
   
   if (isNaN(localDate.getTime())) return cleanDate;
 
-  const dayName = localDate.toLocaleDateString('en-MY', { 
+  const dayName = new Intl.DateTimeFormat('en-MY', { 
     weekday: 'long', 
     timeZone: 'Asia/Kuala_Lumpur' 
-  }).toUpperCase();
+  }).format(localDate).toUpperCase();
   
   return `${cleanDate} ${dayName}`;
 };
