@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { Category } from '../types';
 
@@ -22,6 +23,16 @@ export const DashboardProvider: React.FC<{ children: ReactNode }> = ({ children 
       setIsDarkMode(true);
       document.documentElement.classList.add('dark');
     }
+    
+    // Cross-tab synchronization
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith('halagel_')) {
+        triggerRefresh();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   const toggleDarkMode = () => {

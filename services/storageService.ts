@@ -41,6 +41,28 @@ export const StorageService = {
     localStorage.setItem(KEYS.PRODUCTION, JSON.stringify(data));
     GoogleSheetsService.saveData('saveProduction', data);
   },
+
+  /**
+   * Deletes a production entry by ID.
+   * Uses robust String conversion for ID matching to handle mix of numeric/string IDs.
+   */
+  deleteProductionEntry: (id: string): { updatedData: ProductionEntry[], deletedItem: ProductionEntry | null } => {
+    try {
+      const data = StorageService.getProductionData();
+      const targetId = String(id);
+      
+      const targetItem = data.find(p => String(p.id) === targetId) || null;
+      const updatedData = data.filter(p => String(p.id) !== targetId);
+      
+      // Save immediately to local storage
+      StorageService.saveProductionData(updatedData);
+      
+      return { updatedData, deletedItem: targetItem };
+    } catch (err) {
+      console.error("Storage delete error:", err);
+      return { updatedData: StorageService.getProductionData(), deletedItem: null };
+    }
+  },
   
   getOffDays: (): OffDay[] => JSON.parse(localStorage.getItem(KEYS.OFF_DAYS) || '[]'),
   saveOffDays: (days: OffDay[]) => {
@@ -61,15 +83,19 @@ export const StorageService = {
   
   getLogs: (): ActivityLog[] => JSON.parse(localStorage.getItem(KEYS.LOGS) || '[]'),
   addLog: (log: Omit<ActivityLog, 'id' | 'timestamp'>) => {
-    const logs = StorageService.getLogs();
-    const newLog: ActivityLog = {
-      ...log,
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-    };
-    logs.unshift(newLog);
-    if (logs.length > 1000) logs.pop();
-    localStorage.setItem(KEYS.LOGS, JSON.stringify(logs));
+    try {
+      const logs = StorageService.getLogs();
+      const newLog: ActivityLog = {
+        ...log,
+        id: Date.now().toString(),
+        timestamp: new Date().toISOString(),
+      };
+      logs.unshift(newLog);
+      if (logs.length > 1000) logs.pop();
+      localStorage.setItem(KEYS.LOGS, JSON.stringify(logs));
+    } catch (err) {
+      console.error("Logging error:", err);
+    }
   },
 
   getSession: (): User | null => {

@@ -12,6 +12,9 @@ export const LoginModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (login(username, password)) {
+      window.dispatchEvent(new CustomEvent('app-notification', { 
+        detail: { message: `Login successful! Welcome ${username}.`, type: 'success' } 
+      }));
       onClose();
     } else {
       setError('Invalid username or password');

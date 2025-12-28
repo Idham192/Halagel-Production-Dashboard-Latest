@@ -21,16 +21,41 @@ export const OffDayModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       const newOd: OffDay = { id: Date.now().toString(), date, description: desc || 'Holiday', createdBy: user!.id };
       const updated = [...offDays, newOd].sort((a,b) => a.date.localeCompare(b.date));
       StorageService.saveOffDays(updated);
+      
+      StorageService.addLog({
+        userId: user!.id,
+        userName: user!.name,
+        action: 'ADD_HOLIDAY',
+        details: `Scheduled public holiday: ${newOd.description} (${newOd.date})`
+      });
+
       setOffDays(updated);
       triggerRefresh();
+      
+      window.dispatchEvent(new CustomEvent('app-notification', { 
+          detail: { message: `PUBLIC HOLIDAY SET: ${newOd.description.toUpperCase()} (${newOd.date})`, type: 'success' } 
+      }));
+      
       setDate(''); setDesc('');
   };
 
   const handleRemove = (id: string) => {
+      const target = offDays.find(od => od.id === id);
       const updated = offDays.filter(od => od.id !== id);
       StorageService.saveOffDays(updated);
+      
+      StorageService.addLog({
+        userId: user!.id,
+        userName: user!.name,
+        action: 'DELETE_HOLIDAY',
+        details: `Removed holiday: ${target?.description} (${target?.date})`
+      });
+
       setOffDays(updated);
       triggerRefresh();
+      window.dispatchEvent(new CustomEvent('app-notification', { 
+          detail: { message: 'HOLIDAY REMOVED FROM SYSTEM', type: 'info' } 
+      }));
   };
 
   return (
@@ -50,7 +75,9 @@ export const OffDayModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         </div>
 
         <div className="h-48 overflow-y-auto border border-slate-200 rounded bg-gray-50 dark:bg-slate-900 p-2 space-y-2">
-            {offDays.map(od => (
+            {offDays.length === 0 ? (
+                <div className="text-center p-8 text-slate-400 text-xs italic">No holidays scheduled</div>
+            ) : offDays.map(od => (
                 <div key={od.id} className="flex justify-between items-center bg-white dark:bg-slate-700 p-2 rounded shadow-sm text-sm border border-slate-100 dark:border-slate-600">
                     <div>
                         <span className="font-mono font-bold text-red-500">{od.date}</span>

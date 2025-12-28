@@ -1,16 +1,18 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { CATEGORIES, PROCESSES } from '../../constants';
 import { StorageService } from '../../services/storageService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDashboard } from '../../contexts/DashboardContext';
 import { ProductionEntry } from '../../types';
-import { AlertCircle, CheckCircle2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Palmtree } from 'lucide-react';
 import { getTodayISO } from '../../utils/dateUtils';
 
 export const InputPlan: React.FC = () => {
   const { user } = useAuth();
+  const { triggerRefresh } = useDashboard();
   const [formData, setFormData] = useState({
-    date: getTodayISO(), // Changed from UTC toISOString() to Malaysia-aware getTodayISO()
+    date: getTodayISO(),
     category: CATEGORIES[0],
     process: PROCESSES[0],
     productName: '',
@@ -18,15 +20,21 @@ export const InputPlan: React.FC = () => {
   });
   const [msg, setMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-  const isOffDay = (date: string) => {
-    const offDays = StorageService.getOffDays();
-    return offDays.some(d => d.date === date);
-  };
+  const offDays = useMemo(() => StorageService.getOffDays(), []);
+  const currentOffDay = useMemo(() => offDays.find(od => od.date === formData.date), [formData.date, offDays]);
+
+  useEffect(() => {
+    if (currentOffDay) {
+        window.dispatchEvent(new CustomEvent('app-notification', { 
+            detail: { message: `HOLIDAY ALERT: ${currentOffDay.description}`, type: 'info' } 
+        }));
+    }
+  }, [currentOffDay]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isOffDay(formData.date)) {
-      setMsg({ type: 'error', text: 'Selected date is marked as an Off Day.' });
+    if (currentOffDay) {
+      setMsg({ type: 'error', text: `Selected date is an Off Day: ${currentOffDay.description}.` });
       return;
     }
 
@@ -54,16 +62,16 @@ export const InputPlan: React.FC = () => {
       StorageService.addLog({
         userId: user!.id,
         userName: user!.name,
-        action: 'ADD_PLAN',
+        action: 'CREATE_PLAN',
         details: `Planned ${newEntry.planQuantity} for ${newEntry.productName} on ${newEntry.date}`
       });
 
+      triggerRefresh();
       setMsg({ type: 'success', text: 'Plan entry added successfully.' });
       setFormData({ ...formData, productName: '', quantity: '' });
       
-      // Trigger global notification system
       window.dispatchEvent(new CustomEvent('app-notification', { 
-        detail: { message: 'Production plan saved successfully!', type: 'success' } 
+        detail: { message: 'PRODUCTION PLAN SUBMITTED', type: 'success' } 
       }));
     } catch (err) {
       setMsg({ type: 'error', text: 'Failed to save data.' });
@@ -93,6 +101,16 @@ export const InputPlan: React.FC = () => {
                 value={formData.date}
                 onChange={e => setFormData({...formData, date: e.target.value})}
               />
+              
+              {currentOffDay && (
+                <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex items-center gap-3">
+                  <Palmtree className="w-5 h-5 text-amber-500 shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest leading-none mb-1">Public Holiday</p>
+                    <p className="text-xs font-bold text-slate-700 dark:text-amber-100">{currentOffDay.description}</p>
+                  </div>
+                </div>
+              )}
             </div>
             
             <div>
@@ -145,9 +163,10 @@ export const InputPlan: React.FC = () => {
           <div className="pt-4">
             <button 
               type="submit"
-              className="w-full bg-brand-600 text-white font-semibold py-2.5 rounded-lg hover:bg-brand-700 transition-colors shadow-sm"
+              disabled={!!currentOffDay}
+              className="w-full bg-brand-600 text-white font-semibold py-2.5 rounded-lg hover:bg-brand-700 transition-colors shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              Submit Plan
+              {currentOffDay ? 'Off Day - Entry Locked' : 'Submit Plan'}
             </button>
           </div>
         </form>

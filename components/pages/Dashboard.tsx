@@ -2,28 +2,29 @@
 import React, { useMemo, useState } from 'react';
 import { useDashboard } from '../../contexts/DashboardContext';
 import { StorageService } from '../../services/storageService';
-import { ProductionEntry } from '../../types';
+import { ProductionEntry, OffDay } from '../../types';
 import { PROCESSES } from '../../constants';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { 
   ClipboardList, CheckCircle, RefreshCw, List, Calendar, 
-  ArrowUpRight, TrendingUp, Download, Pencil, Trash2, BarChart3, Layers
+  TrendingUp, Download, Pencil, Trash2, BarChart3, Layers,
+  Palmtree, CalendarOff
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate, getCurrentMonthISO } from '../../utils/dateUtils';
 
 export const Dashboard: React.FC = () => {
   const { category, refreshKey, triggerRefresh } = useDashboard();
-  const { hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   
-  // Use Malaysia-aware monthly initialization
   const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthISO());
 
-  const { productionData } = useMemo(() => {
+  const { productionData, offDays } = useMemo(() => {
     return {
       productionData: StorageService.getProductionData(),
+      offDays: StorageService.getOffDays(),
     };
   }, [refreshKey]);
 
@@ -33,7 +34,6 @@ export const Dashboard: React.FC = () => {
     let selectedMonthPlan = 0;
     let selectedMonthActual = 0;
     
-    // Initialize map with all standard processes to ensure they show even if 0
     const selectedMonthProcessMap = new Map<string, {process: string, Plan: number, Actual: number}>();
     PROCESSES.forEach(proc => {
       selectedMonthProcessMap.set(proc, { process: proc, Plan: 0, Actual: 0 });
@@ -41,7 +41,6 @@ export const Dashboard: React.FC = () => {
 
     relevant.forEach(d => {
       const monthKey = d.date.substring(0, 7);
-
       if (monthKey === selectedMonth) {
         selectedMonthPlan += d.planQuantity;
         selectedMonthActual += d.actualQuantity;
@@ -69,28 +68,53 @@ export const Dashboard: React.FC = () => {
   const dailyGroups = useMemo(() => {
     const baseData = dashboardData.filteredData;
     const filteredEntries = baseData.filter(d => d.date.startsWith(selectedMonth));
+    const filteredOffDays = offDays.filter(od => od.date.startsWith(selectedMonth));
 
     const dates = new Set<string>();
     filteredEntries.forEach(d => dates.add(d.date));
+    filteredOffDays.forEach(od => dates.add(od.date));
+    
     const sortedDates = Array.from(dates).sort((a, b) => b.localeCompare(a));
 
     return sortedDates.map(date => {
         const entriesForDate = filteredEntries.filter(d => d.date === date);
+        const offDayInfo = filteredOffDays.find(od => od.date === date);
         const totalActualForDate = entriesForDate.reduce((sum, entry) => sum + entry.actualQuantity, 0);
         return {
             date,
             totalActualForDate,
-            entries: entriesForDate
+            entries: entriesForDate,
+            isOffDay: !!offDayInfo,
+            offDayName: offDayInfo?.description || ''
         };
     });
-  }, [dashboardData.filteredData, selectedMonth]);
+  }, [dashboardData.filteredData, offDays, selectedMonth]);
 
   const handleDelete = (id: string) => {
-      if(!window.confirm("Delete this record?")) return;
-      const newData = productionData.filter(p => p.id !== id);
-      StorageService.saveProductionData(newData);
+      if(!window.confirm("Are you sure you want to PERMANENTLY delete this record? This action cannot be undone.")) return;
+      
+      // Perform atomic delete and get result
+      const { deletedItem } = StorageService.deleteProductionEntry(id);
+      
+      if (deletedItem) {
+          StorageService.addLog({
+            userId: user!.id,
+            userName: user!.name,
+            action: 'DELETE_RECORD',
+            details: `Admin/Manager permanently deleted production record: ${deletedItem.productName} (${deletedItem.date})`
+          });
+          
+          window.dispatchEvent(new CustomEvent('app-notification', { 
+            detail: { message: 'RECORD DELETED SUCCESSFULLY', type: 'info' } 
+          }));
+      } else {
+          window.dispatchEvent(new CustomEvent('app-notification', { 
+            detail: { message: 'ERROR: RECORD NOT FOUND', type: 'info' } 
+          }));
+      }
+
+      // Force UI refresh regardless of log outcome
       triggerRefresh();
-      window.dispatchEvent(new CustomEvent('app-notification', { detail: { message: 'Entry deleted successfully' } }));
   };
 
   const handleEdit = (entry: ProductionEntry) => {
@@ -98,19 +122,31 @@ export const Dashboard: React.FC = () => {
   };
 
   const downloadCSV = () => {
-    const headers = ["Date", "Process", "Product", "Plan", "Actual", "Batch No", "Manpower"];
-    const rows = dashboardData.filteredData.map(d => [
-      d.date, d.process, d.productName, d.planQuantity, d.actualQuantity, d.batchNo, d.manpower
-    ]);
+    const headers = ["Date", "Status", "Process", "Product", "Plan", "Actual", "Batch No", "Manpower"];
+    const rows = dailyGroups.flatMap(g => {
+        if (g.entries.length === 0) {
+            return [[g.date, g.offDayName || 'Off Day', '-', '-', 0, 0, '-', 0]];
+        }
+        return g.entries.map(d => [
+            d.date, g.isOffDay ? `Holiday (${g.offDayName})` : 'Normal', d.process, d.productName, d.planQuantity, d.actualQuantity, d.batchNo, d.manpower
+        ]);
+    });
     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Halagel_Report_${category}_${selectedMonth}.csv`);
+    link.setAttribute("download", `Halagel_Full_Report_${category}_${selectedMonth}.csv`);
     document.body.appendChild(link);
     link.click();
     
-    window.dispatchEvent(new CustomEvent('app-notification', { detail: { message: 'Production report exported successfully!' } }));
+    StorageService.addLog({
+      userId: user!.id,
+      userName: user!.name,
+      action: 'EXPORT_REPORT',
+      details: `Exported full report for ${category} (${selectedMonth})`
+    });
+    
+    window.dispatchEvent(new CustomEvent('app-notification', { detail: { message: 'REPORT EXPORTED SUCCESSFULLY', type: 'success' } }));
   };
 
   return (
@@ -175,74 +211,6 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Production Chart Section */}
-      <div className="glass-panel p-8 rounded-3xl shadow-sm">
-        <div className="flex items-center justify-between mb-8">
-            <div>
-              <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-indigo-500" />
-                Performance Chart
-              </h3>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Plan vs Actual Comparison ({selectedMonth})</p>
-            </div>
-        </div>
-
-        <div className="h-[350px] w-full">
-          {dashboardData.chartData.some(d => d.Plan > 0 || d.Actual > 0) ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dashboardData.chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
-                <XAxis 
-                  dataKey="process" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} 
-                  dy={10}
-                />
-                <YAxis 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }}
-                />
-                <Tooltip 
-                  cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
-                  contentStyle={{ 
-                    borderRadius: '16px', 
-                    border: 'none', 
-                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-                    backgroundColor: '#fff',
-                    padding: '12px'
-                  }}
-                  itemStyle={{ fontSize: '12px', fontWeight: 800, padding: '2px 0' }}
-                />
-                <Legend 
-                  verticalAlign="top" 
-                  align="right" 
-                  iconType="circle"
-                  wrapperStyle={{ paddingBottom: '30px', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}
-                />
-                <Bar 
-                  dataKey="Plan" 
-                  fill="#3b82f6" 
-                  radius={[6, 6, 0, 0]} 
-                  barSize={32} 
-                />
-                <Bar 
-                  dataKey="Actual" 
-                  fill="#10b981" 
-                  radius={[6, 6, 0, 0]} 
-                  barSize={32} 
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-full w-full flex items-center justify-center border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-2xl">
-              <p className="text-slate-400 font-bold italic">No data recorded for {selectedMonth}.</p>
-            </div>
-          )}
-        </div>
-      </div>
-
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-end gap-4 px-2">
             <div>
@@ -277,82 +245,97 @@ export const Dashboard: React.FC = () => {
                 const [datePart, dayPart] = displayDate.split(' ');
 
                 return (
-                  <div key={`group-${groupIdx}`} className="bg-white dark:bg-[#1a2333] rounded-3xl overflow-hidden shadow-xl border border-gray-100 dark:border-slate-700/50">
-                      <div className="p-6 flex justify-between items-center border-b border-gray-100 dark:border-slate-700/50 bg-gray-50/50 dark:bg-[#232d3f]">
+                  <div key={`group-${groupIdx}`} className={`bg-white dark:bg-[#1a2333] rounded-3xl overflow-hidden shadow-xl border ${group.isOffDay ? 'border-amber-400/50' : 'border-gray-100 dark:border-slate-700/50'}`}>
+                      <div className={`p-6 flex justify-between items-center border-b ${group.isOffDay ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/30' : 'border-gray-100 dark:border-slate-700/50 bg-gray-50/50 dark:bg-[#232d3f]'}`}>
                           <div className="flex items-center gap-4">
-                              <Calendar className="w-7 h-7 text-slate-400 dark:text-slate-500" />
+                              {group.isOffDay ? <Palmtree className="w-7 h-7 text-amber-500" /> : <Calendar className="w-7 h-7 text-slate-400 dark:text-slate-500" />}
                               <div className="flex items-baseline gap-4">
-                                <span className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">{datePart}</span>
+                                <span className={`text-2xl font-black tracking-tight ${group.isOffDay ? 'text-amber-700 dark:text-amber-400' : 'text-slate-800 dark:text-white'}`}>{datePart}</span>
                                 <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">{dayPart}</span>
                               </div>
+                              {group.isOffDay && (
+                                <span className="flex items-center gap-1.5 px-3 py-1 bg-amber-500 text-white text-[10px] font-black uppercase rounded-full shadow-sm tracking-widest">
+                                    <CalendarOff className="w-3 h-3" />
+                                    {group.offDayName || 'OFF DAY'}
+                                </span>
+                              )}
                           </div>
                           <div className="px-6 py-2 bg-white dark:bg-[#0f172a] rounded-2xl border border-gray-100 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm shadow-sm dark:shadow-inner">
                             Total Actual: <span className="text-emerald-600 dark:text-emerald-400 ml-1">{group.totalActualForDate.toLocaleString()}</span>
                           </div>
                       </div>
 
-                      <div className="overflow-x-auto no-scrollbar">
-                          <table className="w-full text-left">
-                              <thead>
-                                  <tr className="border-b border-gray-100 dark:border-slate-700/50 text-[10px] font-black text-slate-500 uppercase tracking-widest bg-gray-50 dark:bg-[#0f172a]/20">
-                                      <th className="px-8 py-5">Process</th>
-                                      <th className="px-8 py-5">Product</th>
-                                      <th className="px-8 py-5 text-center">Plan Qty</th>
-                                      <th className="px-8 py-5 text-center">Actual Qty</th>
-                                      <th className="px-8 py-5 text-center">Efficiency</th>
-                                      <th className="px-8 py-5 text-center">Batch No</th>
-                                      <th className="px-8 py-5 text-center">Manpower</th>
-                                      {hasPermission(['admin', 'manager']) && <th className="px-8 py-5 text-center">Action</th>}
-                                  </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-50 dark:divide-slate-800/30">
-                                  {group.entries.map(entry => {
-                                      const eff = entry.planQuantity > 0 ? (entry.actualQuantity / entry.planQuantity) * 100 : 0;
-                                      const effColor = eff >= 100 ? 'text-[#10b981]' : eff >= 75 ? 'text-[#fbbf24]' : 'text-[#f43f5e]';
+                      {group.entries.length === 0 ? (
+                        <div className="p-12 text-center flex flex-col items-center justify-center gap-3">
+                            <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-full text-slate-300 dark:text-slate-700">
+                                <Palmtree className="w-10 h-10" />
+                            </div>
+                            <p className="text-slate-500 font-bold">No production recorded for this Off Day.</p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto no-scrollbar">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="border-b border-gray-100 dark:border-slate-700/50 text-[10px] font-black text-slate-500 uppercase tracking-widest bg-gray-50 dark:bg-[#0f172a]/20">
+                                        <th className="px-8 py-5">Process</th>
+                                        <th className="px-8 py-5">Product</th>
+                                        <th className="px-8 py-5 text-center">Plan Qty</th>
+                                        <th className="px-8 py-5 text-center">Actual Qty</th>
+                                        <th className="px-8 py-5 text-center">Efficiency</th>
+                                        <th className="px-8 py-5 text-center">Batch No</th>
+                                        <th className="px-8 py-5 text-center">Manpower</th>
+                                        {hasPermission(['admin', 'manager']) && <th className="px-8 py-5 text-center">Action</th>}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50 dark:divide-slate-800/30">
+                                    {group.entries.map(entry => {
+                                        const eff = entry.planQuantity > 0 ? (entry.actualQuantity / entry.planQuantity) * 100 : 0;
+                                        const effColor = eff >= 100 ? 'text-[#10b981]' : eff >= 75 ? 'text-[#fbbf24]' : 'text-[#f43f5e]';
 
-                                      return (
-                                          <tr key={entry.id} className="hover:bg-gray-50/80 dark:hover:bg-slate-700/20 transition-colors">
-                                              <td className="px-8 py-6">
-                                                  <span className="inline-block px-3 py-1.5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase">
-                                                    {entry.process}
-                                                  </span>
-                                              </td>
-                                              <td className="px-8 py-6">
-                                                  <span className="text-sm font-black text-slate-800 dark:text-white">{entry.productName}</span>
-                                              </td>
-                                              <td className="px-8 py-6 text-center">
-                                                  <span className="text-blue-600 dark:text-blue-400 font-black font-mono text-lg">{entry.planQuantity.toLocaleString()}</span>
-                                              </td>
-                                              <td className="px-8 py-6 text-center">
-                                                  <span className="text-emerald-600 dark:text-emerald-400 font-black font-mono text-lg">{entry.actualQuantity.toLocaleString()}</span>
-                                              </td>
-                                              <td className="px-8 py-6 text-center">
-                                                  <span className={`font-black text-lg ${effColor}`}>{eff.toFixed(0)}%</span>
-                                              </td>
-                                              <td className="px-8 py-6 text-center">
-                                                  <span className="text-slate-400 dark:text-slate-500 font-mono text-xs font-bold uppercase">{entry.batchNo || '-'}</span>
-                                              </td>
-                                              <td className="px-8 py-6 text-center">
-                                                  <span className="text-slate-700 dark:text-slate-200 font-black text-lg">{entry.manpower || 0}</span>
-                                              </td>
-                                              {hasPermission(['admin', 'manager']) && (
+                                        return (
+                                            <tr key={entry.id} className={`hover:bg-gray-50/80 dark:hover:bg-slate-700/20 transition-colors ${group.isOffDay ? 'bg-amber-50/20 dark:bg-amber-900/5' : ''}`}>
                                                 <td className="px-8 py-6">
-                                                    <div className="flex items-center justify-center gap-3">
-                                                        <button onClick={() => handleEdit(entry)} className="p-2 text-indigo-400 hover:bg-indigo-500/20 rounded-xl transition">
-                                                            <Pencil className="w-5 h-5" />
-                                                        </button>
-                                                        <button onClick={() => handleDelete(entry.id)} className="p-2 text-slate-500 hover:text-rose-500 hover:bg-rose-500/20 rounded-xl transition">
-                                                            <Trash2 className="w-5 h-5" />
-                                                        </button>
-                                                    </div>
+                                                    <span className="inline-block px-3 py-1.5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase">
+                                                      {entry.process}
+                                                    </span>
                                                 </td>
-                                              )}
-                                          </tr>
-                                      );
-                                  })}
-                              </tbody>
-                          </table>
-                      </div>
+                                                <td className="px-8 py-6">
+                                                    <span className="text-sm font-black text-slate-800 dark:text-white">{entry.productName}</span>
+                                                </td>
+                                                <td className="px-8 py-6 text-center">
+                                                    <span className="text-blue-600 dark:text-blue-400 font-black font-mono text-lg">{entry.planQuantity.toLocaleString()}</span>
+                                                </td>
+                                                <td className="px-8 py-6 text-center">
+                                                    <span className="text-emerald-600 dark:text-emerald-400 font-black font-mono text-lg">{entry.actualQuantity.toLocaleString()}</span>
+                                                </td>
+                                                <td className="px-8 py-6 text-center">
+                                                    <span className={`font-black text-lg ${effColor}`}>{eff.toFixed(0)}%</span>
+                                                </td>
+                                                <td className="px-8 py-6 text-center">
+                                                    <span className="text-slate-400 dark:text-slate-500 font-mono text-xs font-bold uppercase">{entry.batchNo || '-'}</span>
+                                                </td>
+                                                <td className="px-8 py-6 text-center">
+                                                    <span className="text-slate-700 dark:text-slate-200 font-black text-lg">{entry.manpower || 0}</span>
+                                                </td>
+                                                {hasPermission(['admin', 'manager']) && (
+                                                  <td className="px-8 py-6">
+                                                      <div className="flex items-center justify-center gap-3">
+                                                          <button onClick={() => handleEdit(entry)} title="Edit Record" className="p-2 text-indigo-400 hover:bg-indigo-500/20 rounded-xl transition">
+                                                              <Pencil className="w-5 h-5" />
+                                                          </button>
+                                                          <button onClick={() => handleDelete(entry.id)} title="Delete Record" className="p-2 text-slate-500 hover:text-rose-500 hover:bg-rose-500/20 rounded-xl transition">
+                                                              <Trash2 className="w-5 h-5" />
+                                                          </button>
+                                                      </div>
+                                                  </td>
+                                                )}
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                      )}
                   </div>
                 );
             })}

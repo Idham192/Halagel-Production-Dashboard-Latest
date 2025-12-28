@@ -1,31 +1,79 @@
-import React from 'react';
+
+import React, { useEffect, useState } from 'react';
 import { StorageService } from '../../services/storageService';
+import { useAuth } from '../../contexts/AuthContext';
+import { useDashboard } from '../../contexts/DashboardContext';
+import { ActivityLog as LogEntry } from '../../types';
+import { History, User, Clock } from 'lucide-react';
 
 export const ActivityLog: React.FC = () => {
-  const logs = StorageService.getLogs();
+  const { user: authUser } = useAuth();
+  const { refreshKey } = useDashboard();
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+
+  // Re-fetch logs whenever the refreshKey changes (globally triggered by operations)
+  useEffect(() => {
+    setLogs(StorageService.getLogs());
+  }, [refreshKey]);
+
+  if (!authUser) {
+    return (
+        <div className="p-12 text-center text-slate-400 font-bold">Please log in to view system activity.</div>
+    );
+  }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">System Activity Log</h2>
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-3">
+            <History className="w-6 h-6 text-indigo-500" />
+            System Activity Log
+          </h2>
+          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Audit trail of all manufacturing operations</p>
+        </div>
+        <div className="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 rounded-full border border-indigo-100 dark:border-indigo-800 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-tighter">
+          {logs.length} Total Actions
+        </div>
+      </div>
       
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <ul className="divide-y divide-gray-100">
+      <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+        <ul className="divide-y divide-gray-100 dark:divide-slate-700">
             {logs.length === 0 ? (
-                <li className="p-8 text-center text-gray-400">No activity recorded yet.</li>
+                <li className="p-12 text-center flex flex-col items-center justify-center gap-4">
+                   <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-full text-slate-200">
+                      <History className="w-10 h-10" />
+                   </div>
+                   <p className="text-slate-400 font-bold italic">No system activity recorded yet.</p>
+                </li>
             ) : logs.map(log => (
-                <li key={log.id} className="p-4 hover:bg-gray-50 transition-colors">
-                    <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-900">
-                                <span className="font-bold text-brand-700">{log.userName}</span> 
-                                <span className="text-gray-500 font-normal ml-1">performed</span> 
-                                <span className="ml-1 px-2 py-0.5 rounded bg-gray-100 text-xs font-mono border border-gray-200">{log.action}</span>
-                            </p>
-                            <p className="text-sm text-gray-600 mt-1">{log.details}</p>
+                <li key={log.id} className="p-6 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors group">
+                    <div className="flex justify-between items-start gap-6">
+                        <div className="flex gap-4">
+                           <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-slate-400 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">
+                              <User className="w-5 h-5" />
+                           </div>
+                           <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-sm font-black text-slate-800 dark:text-white">{log.userName}</span>
+                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 font-mono tracking-tighter">
+                                  {log.action}
+                                </span>
+                              </div>
+                              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed">{log.details}</p>
+                           </div>
                         </div>
-                        <span className="text-xs text-gray-400 whitespace-nowrap ml-4">
-                            {new Date(log.timestamp).toLocaleString()}
-                        </span>
+                        <div className="text-right flex flex-col items-end gap-1 shrink-0">
+                           <div className="flex items-center gap-1.5 text-slate-400">
+                              <Clock className="w-3.5 h-3.5" />
+                              <span className="text-[10px] font-black uppercase tracking-widest">
+                                {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                           </div>
+                           <span className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">
+                              {new Date(log.timestamp).toLocaleDateString()}
+                           </span>
+                        </div>
                     </div>
                 </li>
             ))}

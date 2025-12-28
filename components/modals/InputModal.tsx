@@ -1,11 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDashboard } from '../../contexts/DashboardContext';
 import { StorageService } from '../../services/storageService';
 import { CATEGORIES, PROCESSES } from '../../constants';
 import { ProductionEntry, Category, ProcessType } from '../../types';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, AlertTriangle, Palmtree } from 'lucide-react';
 import { getTodayISO } from '../../utils/dateUtils';
 
 interface InputModalProps {
@@ -30,7 +30,18 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
   const [plans, setPlans] = useState<ProductionEntry[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
 
+  const offDays = useMemo(() => StorageService.getOffDays(), []);
+  const currentOffDay = useMemo(() => offDays.find(od => od.date === date), [date, offDays]);
+
   const inputClasses = "w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm";
+
+  useEffect(() => {
+    if (currentOffDay && !editEntry) {
+      window.dispatchEvent(new CustomEvent('app-notification', { 
+        detail: { message: `PUBLIC HOLIDAY: ${currentOffDay.description}`, type: 'info' } 
+      }));
+    }
+  }, [currentOffDay, editEntry]);
 
   useEffect(() => {
     if (editEntry) {
@@ -61,9 +72,10 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
     e.preventDefault();
     setIsSubmitting(true);
     
-    const offDays = StorageService.getOffDays();
-    if (!editEntry && offDays.some(od => od.date === date)) {
-        alert("Selected date is marked as an OFF DAY. Entry restricted.");
+    if (!editEntry && currentOffDay) {
+        window.dispatchEvent(new CustomEvent('app-notification', { 
+            detail: { message: `ENTRY RESTRICTED: Today is ${currentOffDay.description}`, type: 'info' } 
+        }));
         setIsSubmitting(false);
         return;
     }
@@ -76,8 +88,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                 if (p.id === editEntry.id) {
                     return { 
                         ...p, 
-                        date, 
-                        category, process, productName,
+                        date, category, process, productName,
                         planQuantity: tab === 'Plan' ? parseInt(quantity) : p.planQuantity,
                         actualQuantity: tab === 'Actual' ? parseInt(quantity) : p.actualQuantity,
                         batchNo, manpower: parseInt(manpower),
@@ -87,6 +98,15 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                 return p;
             });
             StorageService.saveProductionData(updated);
+            StorageService.addLog({
+              userId: user!.id,
+              userName: user!.name,
+              action: 'EDIT_RECORD',
+              details: `Edited ${productName} (${process}) on ${date}`
+            });
+            window.dispatchEvent(new CustomEvent('app-notification', { 
+              detail: { message: 'PRODUCTION RECORD UPDATED', type: 'success' } 
+            }));
         } else {
             if (tab === 'Plan') {
                 const newEntry: ProductionEntry = {
@@ -96,8 +116,18 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                     lastUpdatedBy: user!.id, updatedAt: new Date().toISOString()
                 };
                 StorageService.saveProductionData([...currentData, newEntry]);
+                StorageService.addLog({
+                  userId: user!.id,
+                  userName: user!.name,
+                  action: 'CREATE_PLAN',
+                  details: `Created new plan for ${productName}: ${quantity} units`
+                });
+                window.dispatchEvent(new CustomEvent('app-notification', { 
+                  detail: { message: 'PRODUCTION PLAN SUBMITTED', type: 'success' } 
+                }));
             } else {
                 if (!selectedPlanId) throw new Error("Please select a plan");
+                const targetPlan = currentData.find(p => p.id === selectedPlanId);
                 const updated = currentData.map(p => {
                     if (p.id === selectedPlanId) {
                         return { 
@@ -109,16 +139,24 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                     return p;
                 });
                 StorageService.saveProductionData(updated);
+                StorageService.addLog({
+                  userId: user!.id,
+                  userName: user!.name,
+                  action: 'RECORD_ACTUAL',
+                  details: `Recorded actual production for ${targetPlan?.productName}: ${quantity} units`
+                });
+                window.dispatchEvent(new CustomEvent('app-notification', { 
+                  detail: { message: 'ACTUAL PRODUCTION RECORDED', type: 'success' } 
+                }));
             }
         }
 
-        window.dispatchEvent(new CustomEvent('app-notification', { 
-            detail: { message: 'DATA RECORDED & SYNCED', type: 'success' } 
-        }));
         triggerRefresh();
         onClose();
     } catch (err: any) {
-        alert(err.message);
+        window.dispatchEvent(new CustomEvent('app-notification', { 
+            detail: { message: err.message || 'Operation failed', type: 'info' } 
+        }));
     } finally {
         setIsSubmitting(false);
     }
@@ -130,7 +168,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
         {isSubmitting && (
             <div className="absolute inset-0 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
                 <Loader2 className="w-10 h-10 text-indigo-600 animate-spin mb-2" />
-                <p className="text-xs font-black uppercase tracking-widest text-indigo-600">Uploading to Cloud...</p>
+                <p className="text-xs font-black uppercase tracking-widest text-indigo-600">Syncing with system...</p>
             </div>
         )}
 
@@ -164,6 +202,19 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                 <div>
                     <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Production Date</label>
                     <input type="date" required value={date} onChange={e => setDate(e.target.value)} className={inputClasses} />
+                    
+                    {currentOffDay && (
+                      <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl flex items-center gap-3 animate-pulse shadow-sm">
+                        <div className="p-2 bg-amber-500 text-white rounded-lg shadow-md">
+                          <Palmtree className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-[10px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest leading-none mb-1">System Warning</p>
+                          <p className="text-xs font-black text-slate-900 dark:text-amber-50">{currentOffDay.description || 'OFF DAY'}</p>
+                        </div>
+                        <AlertTriangle className="w-5 h-5 text-amber-500" />
+                      </div>
+                    )}
                 </div>
 
                 {tab === 'Plan' || editEntry ? (
@@ -236,8 +287,16 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                     </>
                 )}
 
-                <button type="submit" disabled={isSubmitting} className={`w-full py-4 rounded-xl font-black text-xs uppercase tracking-[0.2em] text-white mt-6 shadow-xl transition hover:opacity-90 ${tab === 'Plan' ? 'bg-slate-900 dark:bg-indigo-600 shadow-indigo-500/10' : 'bg-emerald-600 shadow-emerald-500/10'}`}>
-                    {editEntry ? 'Save Changes' : `Confirm ${tab} Entry`}
+                <button 
+                    type="submit" 
+                    disabled={isSubmitting || (!editEntry && !!currentOffDay)} 
+                    className={`w-full py-4 rounded-xl font-black text-xs uppercase tracking-[0.2em] text-white mt-6 shadow-xl transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed ${
+                        !!currentOffDay && !editEntry ? 'bg-amber-600' : 
+                        tab === 'Plan' ? 'bg-slate-900 dark:bg-indigo-600 shadow-indigo-500/10' : 
+                        'bg-emerald-600 shadow-emerald-500/10'
+                    }`}
+                >
+                    {isSubmitting ? 'Syncing...' : (!!currentOffDay && !editEntry ? 'Holiday Entry Locked' : (editEntry ? 'Save Changes' : `Confirm ${tab} Entry`))}
                 </button>
             </form>
         </div>
