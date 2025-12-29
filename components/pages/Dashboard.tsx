@@ -5,12 +5,9 @@ import { StorageService } from '../../services/storageService';
 import { ProductionEntry, OffDay } from '../../types';
 import { PROCESSES } from '../../constants';
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
-} from 'recharts';
-import { 
   ClipboardList, CheckCircle, RefreshCw, List, Calendar, 
-  TrendingUp, Download, Pencil, Trash2, BarChart3, Layers,
-  Palmtree, CalendarOff
+  TrendingUp, Download, Pencil, Trash2, Layers,
+  Palmtree
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate, getCurrentMonthISO } from '../../utils/dateUtils';
@@ -29,7 +26,8 @@ export const Dashboard: React.FC = () => {
   }, [refreshKey]);
 
   const dashboardData = useMemo(() => {
-    const relevant = productionData.filter(d => d.category === category);
+    // Filter out malformed entries first
+    const relevant = productionData.filter(d => d && d.category === category && d.date);
     
     let selectedMonthPlan = 0;
     let selectedMonthActual = 0;
@@ -40,22 +38,22 @@ export const Dashboard: React.FC = () => {
     });
 
     relevant.forEach(d => {
-      const monthKey = d.date.substring(0, 7);
-      if (monthKey === selectedMonth) {
-        selectedMonthPlan += d.planQuantity;
-        selectedMonthActual += d.actualQuantity;
+      const dateStr = (d.date || '').trim().substring(0, 7);
+      if (dateStr === selectedMonth) {
+        selectedMonthPlan += (d.planQuantity || 0);
+        selectedMonthActual += (d.actualQuantity || 0);
         
-        if (!selectedMonthProcessMap.has(d.process)) {
-          selectedMonthProcessMap.set(d.process, { process: d.process, Plan: 0, Actual: 0 });
+        const procName = d.process || 'Other';
+        if (selectedMonthProcessMap.has(procName)) {
+          const p = selectedMonthProcessMap.get(procName)!;
+          p.Plan += (d.planQuantity || 0);
+          p.Actual += (d.actualQuantity || 0);
         }
-        const p = selectedMonthProcessMap.get(d.process)!;
-        p.Plan += d.planQuantity;
-        p.Actual += d.actualQuantity;
       }
     });
 
     return {
-      filteredData: relevant.sort((a,b) => b.date.localeCompare(a.date)),
+      filteredData: relevant.sort((a,b) => (b.date || '').localeCompare(a.date || '')),
       selectedMonthStats: { 
         plan: selectedMonthPlan, 
         actual: selectedMonthActual,
@@ -67,21 +65,35 @@ export const Dashboard: React.FC = () => {
 
   const dailyGroups = useMemo(() => {
     const baseData = dashboardData.filteredData;
-    const filteredEntries = baseData.filter(d => d.date.startsWith(selectedMonth));
-    const filteredOffDays = offDays.filter(od => od.date.startsWith(selectedMonth));
+    
+    // Normalize dates to YYYY-MM-DD for filter matching
+    const filteredEntries = baseData.filter(d => {
+        if (!d || !d.date) return false;
+        return d.date.trim().startsWith(selectedMonth);
+    });
+
+    const filteredOffDays = offDays.filter(od => {
+        if (!od || !od.date) return false;
+        return od.date.trim().startsWith(selectedMonth);
+    });
 
     const dates = new Set<string>();
-    filteredEntries.forEach(d => dates.add(d.date));
-    filteredOffDays.forEach(od => dates.add(od.date));
+    filteredEntries.forEach(d => {
+      if (d.date) dates.add(d.date.trim().split('T')[0]);
+    });
+    filteredOffDays.forEach(od => {
+      if (od.date) dates.add(od.date.trim().split('T')[0]);
+    });
     
-    const sortedDates = Array.from(dates).sort((a, b) => b.localeCompare(a));
+    const sortedDates = Array.from(dates).sort((a, b) => (b || '').localeCompare(a || ''));
 
-    return sortedDates.map(date => {
-        const entriesForDate = filteredEntries.filter(d => d.date === date);
-        const offDayInfo = filteredOffDays.find(od => od.date === date);
-        const totalActualForDate = entriesForDate.reduce((sum, entry) => sum + entry.actualQuantity, 0);
+    return sortedDates.map(dateKey => {
+        const entriesForDate = filteredEntries.filter(d => d.date && d.date.trim().split('T')[0] === dateKey);
+        const offDayInfo = filteredOffDays.find(od => od.date && od.date.trim().split('T')[0] === dateKey);
+        const totalActualForDate = entriesForDate.reduce((sum, entry) => sum + (entry.actualQuantity || 0), 0);
+        
         return {
-            date,
+            date: dateKey,
             totalActualForDate,
             entries: entriesForDate,
             isOffDay: !!offDayInfo,
@@ -93,7 +105,6 @@ export const Dashboard: React.FC = () => {
   const handleDelete = (id: string) => {
       if(!window.confirm("Are you sure you want to PERMANENTLY delete this record? This action cannot be undone.")) return;
       
-      // Perform atomic delete and get result
       const { deletedItem } = StorageService.deleteProductionEntry(id);
       
       if (deletedItem) {
@@ -107,13 +118,8 @@ export const Dashboard: React.FC = () => {
           window.dispatchEvent(new CustomEvent('app-notification', { 
             detail: { message: 'RECORD DELETED SUCCESSFULLY', type: 'info' } 
           }));
-      } else {
-          window.dispatchEvent(new CustomEvent('app-notification', { 
-            detail: { message: 'ERROR: RECORD NOT FOUND', type: 'info' } 
-          }));
       }
 
-      // Force UI refresh regardless of log outcome
       triggerRefresh();
   };
 
@@ -158,59 +164,63 @@ export const Dashboard: React.FC = () => {
                <TrendingUp className="w-16 h-16" />
             </div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monthly Plan (Total)</p>
-            <h3 className="text-3xl font-black mt-1 text-slate-800 dark:text-white">{dashboardData.selectedMonthStats.plan.toLocaleString()}</h3>
+            <h3 className="text-3xl font-black mt-1 text-slate-800 dark:text-white">{(dashboardData.selectedMonthStats.plan || 0).toLocaleString()}</h3>
         </div>
         <div className="glass-panel p-6 rounded-3xl border-l-4 border-emerald-500 shadow-sm relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                <CheckCircle className="w-16 h-16" />
             </div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monthly Actual (Total)</p>
-            <h3 className="text-3xl font-black mt-1 text-slate-800 dark:text-white">{dashboardData.selectedMonthStats.actual.toLocaleString()}</h3>
+            <h3 className="text-3xl font-black mt-1 text-slate-800 dark:text-white">{(dashboardData.selectedMonthStats.actual || 0).toLocaleString()}</h3>
         </div>
         <div className="glass-panel p-6 rounded-3xl border-l-4 border-indigo-500 shadow-sm relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                <RefreshCw className="w-16 h-16" />
             </div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Overall Efficiency</p>
-            <h3 className="text-3xl font-black mt-1 text-slate-800 dark:text-white">{dashboardData.selectedMonthStats.efficiency.toFixed(1)}%</h3>
+            <h3 className="text-3xl font-black mt-1 text-slate-800 dark:text-white">{(dashboardData.selectedMonthStats.efficiency || 0).toFixed(1)}%</h3>
         </div>
       </div>
 
-      {/* Monthly Breakdown by Process */}
+      {/* MONTHLY PROCESS BREAKDOWN - Grid view as requested */}
       <div className="space-y-4">
         <div className="flex items-center gap-2 px-2">
-          <Layers className="w-5 h-5 text-indigo-500" />
-          <h3 className="text-sm font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">Monthly Process Breakdown</h3>
+            <Layers className="w-4 h-4 text-indigo-500" />
+            <h3 className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em]">Monthly Process Breakdown</h3>
         </div>
         
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-          {dashboardData.chartData.map(proc => {
-            const eff = proc.Plan > 0 ? (proc.Actual / proc.Plan) * 100 : 0;
-            return (
-              <div key={proc.process} className="glass-panel p-4 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow">
-                <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2">{proc.process}</p>
-                <div className="space-y-1">
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase">Plan</span>
-                    <span className="text-sm font-black text-slate-700 dark:text-slate-200">{proc.Plan.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase">Actual</span>
-                    <span className="text-sm font-black text-emerald-500">{proc.Actual.toLocaleString()}</span>
-                  </div>
-                  <div className="pt-2 mt-2 border-t border-gray-50 dark:border-slate-800 flex justify-between items-center">
-                    <span className="text-[8px] font-black text-slate-300 uppercase">Eff.</span>
-                    <span className={`text-xs font-black ${eff >= 100 ? 'text-emerald-500' : eff >= 75 ? 'text-amber-500' : 'text-rose-500'}`}>
-                      {eff.toFixed(1)}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {dashboardData.chartData.map((item) => {
+                const eff = item.Plan > 0 ? (item.Actual / item.Plan) * 100 : 0;
+                return (
+                    <div key={item.process} className="glass-panel p-6 rounded-[2rem] border border-gray-100 dark:border-slate-800 shadow-sm group hover:border-indigo-500/30 transition-all duration-300">
+                        <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-5">{item.process}</p>
+                        
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-baseline">
+                                <span className="text-[9px] font-black text-slate-400 uppercase">Plan</span>
+                                <span className="text-sm font-black text-slate-800 dark:text-white">{(item.Plan || 0).toLocaleString()}</span>
+                            </div>
+                            
+                            <div className="flex justify-between items-baseline">
+                                <span className="text-[9px] font-black text-slate-400 uppercase">Actual</span>
+                                <span className="text-sm font-black text-emerald-500">{(item.Actual || 0).toLocaleString()}</span>
+                            </div>
+                            
+                            <div className="pt-3 border-t border-gray-50 dark:border-slate-700 flex justify-between items-baseline">
+                                <span className="text-[9px] font-black text-slate-400 uppercase">Eff.</span>
+                                <span className={`text-xs font-black ${eff >= 100 ? 'text-emerald-500' : eff >= 75 ? 'text-amber-500' : 'text-rose-500'}`}>
+                                    {(eff || 0).toFixed(1)}%
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })}
         </div>
       </div>
 
+      {/* Daily Logs */}
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-end gap-4 px-2">
             <div>
@@ -218,7 +228,7 @@ export const Dashboard: React.FC = () => {
                   <List className="w-5 h-5 text-indigo-500" />
                   Daily Production Log
                </h3>
-               <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Detailed operational entries</p>
+               <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Operational granularity for {selectedMonth}</p>
             </div>
             
             <div className="flex items-center gap-3">
@@ -234,97 +244,88 @@ export const Dashboard: React.FC = () => {
             </div>
         </div>
         
-        <div className="space-y-8">
+        <div className="space-y-6">
             {dailyGroups.length === 0 ? (
-               <div className="bg-white dark:bg-slate-850 rounded-3xl p-12 text-center border-2 border-dashed border-gray-100 dark:border-slate-800">
-                  <ClipboardList className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                  <p className="text-slate-400 font-bold">No production logs found for the selected month.</p>
-               </div>
+                <div className="glass-panel p-16 rounded-[2rem] text-center">
+                    <div className="flex flex-col items-center gap-4">
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-full text-slate-200">
+                            <ClipboardList className="w-12 h-12" />
+                        </div>
+                        <p className="text-slate-400 font-bold uppercase tracking-widest">No production logs found for the selected month.</p>
+                        <p className="text-xs text-slate-400">Try changing the category or month filter.</p>
+                    </div>
+                </div>
             ) : dailyGroups.map((group, groupIdx) => {
                 const displayDate = formatDisplayDate(group.date);
                 const [datePart, dayPart] = displayDate.split(' ');
 
                 return (
-                  <div key={`group-${groupIdx}`} className={`bg-white dark:bg-[#1a2333] rounded-3xl overflow-hidden shadow-xl border ${group.isOffDay ? 'border-amber-400/50' : 'border-gray-100 dark:border-slate-700/50'}`}>
-                      <div className={`p-6 flex justify-between items-center border-b ${group.isOffDay ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/30' : 'border-gray-100 dark:border-slate-700/50 bg-gray-50/50 dark:bg-[#232d3f]'}`}>
+                  <div key={`group-${groupIdx}`} className={`bg-white dark:bg-slate-850 rounded-[2rem] overflow-hidden shadow-sm border ${group.isOffDay ? 'border-amber-400/50' : 'border-gray-100 dark:border-slate-800'}`}>
+                      <div className={`p-6 flex justify-between items-center border-b ${group.isOffDay ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-100 dark:border-amber-900/30' : 'border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/50'}`}>
                           <div className="flex items-center gap-4">
-                              {group.isOffDay ? <Palmtree className="w-7 h-7 text-amber-500" /> : <Calendar className="w-7 h-7 text-slate-400 dark:text-slate-500" />}
-                              <div className="flex items-baseline gap-4">
-                                <span className={`text-2xl font-black tracking-tight ${group.isOffDay ? 'text-amber-700 dark:text-amber-400' : 'text-slate-800 dark:text-white'}`}>{datePart}</span>
-                                <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">{dayPart}</span>
+                              {group.isOffDay ? <Palmtree className="w-6 h-6 text-amber-500" /> : <Calendar className="w-6 h-6 text-slate-400" />}
+                              <div className="flex items-baseline gap-2">
+                                <span className={`text-xl font-black ${group.isOffDay ? 'text-amber-700 dark:text-amber-400' : 'text-slate-800 dark:text-white'}`}>{datePart}</span>
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{dayPart}</span>
                               </div>
                               {group.isOffDay && (
-                                <span className="flex items-center gap-1.5 px-3 py-1 bg-amber-500 text-white text-[10px] font-black uppercase rounded-full shadow-sm tracking-widest">
-                                    <CalendarOff className="w-3 h-3" />
+                                <span className="px-3 py-1 bg-amber-500 text-white text-[9px] font-black uppercase rounded-full shadow-sm tracking-widest">
                                     {group.offDayName || 'OFF DAY'}
                                 </span>
                               )}
                           </div>
-                          <div className="px-6 py-2 bg-white dark:bg-[#0f172a] rounded-2xl border border-gray-100 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm shadow-sm dark:shadow-inner">
-                            Total Actual: <span className="text-emerald-600 dark:text-emerald-400 ml-1">{group.totalActualForDate.toLocaleString()}</span>
+                          <div className="px-4 py-1.5 bg-white dark:bg-slate-900 rounded-xl border border-gray-100 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-black text-[11px] uppercase tracking-widest">
+                            Actual: <span className="text-emerald-500 ml-1">{(group.totalActualForDate || 0).toLocaleString()}</span>
                           </div>
                       </div>
 
-                      {group.entries.length === 0 ? (
-                        <div className="p-12 text-center flex flex-col items-center justify-center gap-3">
-                            <div className="p-4 bg-slate-50 dark:bg-slate-900/50 rounded-full text-slate-300 dark:text-slate-700">
-                                <Palmtree className="w-10 h-10" />
-                            </div>
-                            <p className="text-slate-500 font-bold">No production recorded for this Off Day.</p>
-                        </div>
-                      ) : (
+                      {group.entries.length > 0 ? (
                         <div className="overflow-x-auto no-scrollbar">
                             <table className="w-full text-left">
                                 <thead>
-                                    <tr className="border-b border-gray-100 dark:border-slate-700/50 text-[10px] font-black text-slate-500 uppercase tracking-widest bg-gray-50 dark:bg-[#0f172a]/20">
-                                        <th className="px-8 py-5">Process</th>
-                                        <th className="px-8 py-5">Product</th>
-                                        <th className="px-8 py-5 text-center">Plan Qty</th>
-                                        <th className="px-8 py-5 text-center">Actual Qty</th>
-                                        <th className="px-8 py-5 text-center">Efficiency</th>
-                                        <th className="px-8 py-5 text-center">Batch No</th>
-                                        <th className="px-8 py-5 text-center">Manpower</th>
-                                        {hasPermission(['admin', 'manager']) && <th className="px-8 py-5 text-center">Action</th>}
+                                    <tr className="border-b border-gray-50 dark:border-slate-800 text-[9px] font-black text-slate-400 uppercase tracking-widest bg-gray-50/30 dark:bg-slate-900/30">
+                                        <th className="px-8 py-4">Process</th>
+                                        <th className="px-8 py-4">Product</th>
+                                        <th className="px-8 py-4 text-right">Plan Qty</th>
+                                        <th className="px-8 py-4 text-right">Actual Qty</th>
+                                        <th className="px-8 py-4 text-center">Efficiency</th>
+                                        <th className="px-8 py-4 text-center">Batch No</th>
+                                        <th className="px-8 py-4 text-center">Manpower</th>
+                                        {hasPermission(['admin', 'manager']) && <th className="px-8 py-4 text-center">Action</th>}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50 dark:divide-slate-800/30">
                                     {group.entries.map(entry => {
                                         const eff = entry.planQuantity > 0 ? (entry.actualQuantity / entry.planQuantity) * 100 : 0;
-                                        const effColor = eff >= 100 ? 'text-[#10b981]' : eff >= 75 ? 'text-[#fbbf24]' : 'text-[#f43f5e]';
-
                                         return (
-                                            <tr key={entry.id} className={`hover:bg-gray-50/80 dark:hover:bg-slate-700/20 transition-colors ${group.isOffDay ? 'bg-amber-50/20 dark:bg-amber-900/5' : ''}`}>
-                                                <td className="px-8 py-6">
-                                                    <span className="inline-block px-3 py-1.5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase">
-                                                      {entry.process}
-                                                    </span>
+                                            <tr key={entry.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                                                <td className="px-8 py-5">
+                                                    <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded-lg border border-indigo-100 dark:border-indigo-800">{entry.process}</span>
                                                 </td>
-                                                <td className="px-8 py-6">
+                                                <td className="px-8 py-5">
                                                     <span className="text-sm font-black text-slate-800 dark:text-white">{entry.productName}</span>
                                                 </td>
-                                                <td className="px-8 py-6 text-center">
-                                                    <span className="text-blue-600 dark:text-blue-400 font-black font-mono text-lg">{entry.planQuantity.toLocaleString()}</span>
+                                                <td className="px-8 py-5 text-right font-black text-indigo-600/80 dark:text-indigo-400/80">{(entry.planQuantity || 0).toLocaleString()}</td>
+                                                <td className="px-8 py-5 text-right font-black text-emerald-500">{(entry.actualQuantity || 0).toLocaleString()}</td>
+                                                <td className="px-8 py-5 text-center">
+                                                    <span className={`text-xs font-black ${eff >= 100 ? 'text-emerald-500' : eff >= 75 ? 'text-amber-500' : 'text-rose-500'}`}>
+                                                        {(eff || 0).toFixed(0)}%
+                                                    </span>
                                                 </td>
-                                                <td className="px-8 py-6 text-center">
-                                                    <span className="text-emerald-600 dark:text-emerald-400 font-black font-mono text-lg">{entry.actualQuantity.toLocaleString()}</span>
+                                                <td className="px-8 py-5 text-center">
+                                                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-tighter">{entry.batchNo || '-'}</span>
                                                 </td>
-                                                <td className="px-8 py-6 text-center">
-                                                    <span className={`font-black text-lg ${effColor}`}>{eff.toFixed(0)}%</span>
-                                                </td>
-                                                <td className="px-8 py-6 text-center">
-                                                    <span className="text-slate-400 dark:text-slate-500 font-mono text-xs font-bold uppercase">{entry.batchNo || '-'}</span>
-                                                </td>
-                                                <td className="px-8 py-6 text-center">
-                                                    <span className="text-slate-700 dark:text-slate-200 font-black text-lg">{entry.manpower || 0}</span>
+                                                <td className="px-8 py-5 text-center">
+                                                    <span className="text-base font-black text-slate-800 dark:text-white">{entry.manpower || '0'}</span>
                                                 </td>
                                                 {hasPermission(['admin', 'manager']) && (
-                                                  <td className="px-8 py-6">
-                                                      <div className="flex items-center justify-center gap-3">
-                                                          <button onClick={() => handleEdit(entry)} title="Edit Record" className="p-2 text-indigo-400 hover:bg-indigo-500/20 rounded-xl transition">
-                                                              <Pencil className="w-5 h-5" />
+                                                  <td className="px-8 py-5">
+                                                      <div className="flex items-center justify-center gap-2">
+                                                          <button onClick={() => handleEdit(entry)} className="p-1.5 text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition">
+                                                              <Pencil className="w-4 h-4" />
                                                           </button>
-                                                          <button onClick={() => handleDelete(entry.id)} title="Delete Record" className="p-2 text-slate-500 hover:text-rose-500 hover:bg-rose-500/20 rounded-xl transition">
-                                                              <Trash2 className="w-5 h-5" />
+                                                          <button onClick={() => handleDelete(entry.id)} className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition">
+                                                              <Trash2 className="w-4 h-4" />
                                                           </button>
                                                       </div>
                                                   </td>
@@ -334,6 +335,10 @@ export const Dashboard: React.FC = () => {
                                     })}
                                 </tbody>
                             </table>
+                        </div>
+                      ) : (
+                        <div className="p-10 text-center text-slate-400 text-xs italic font-bold uppercase tracking-widest">
+                            No production activity recorded for this date.
                         </div>
                       )}
                   </div>

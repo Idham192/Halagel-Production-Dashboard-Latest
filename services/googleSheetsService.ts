@@ -20,13 +20,16 @@ export const GoogleSheetsService = {
     if (!url) return null;
 
     try {
-      // Use cache-busting to ensure fresh data from the sheet
-      const response = await fetch(`${url}?action=${action}&_t=${Date.now()}`);
-      if (!response.ok) throw new Error('Network error');
+      // Use double cache-busting (timestamp + random seed) to defeat strict browser/CDN caching
+      const seed = Math.random().toString(36).substring(7);
+      const response = await fetch(`${url}?action=${action}&_t=${Date.now()}&_s=${seed}`);
+      
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      
       const json = await response.json();
       return json;
     } catch (error) {
-      console.error('Sheets fetch error:', error);
+      console.error(`Sheets fetch error (${action}):`, error);
       return null;
     }
   },
@@ -36,17 +39,17 @@ export const GoogleSheetsService = {
     if (!url) return false;
 
     try {
-      // POST to Google Apps Script
-      // We use 'no-cors' to avoid preflight issues with Google's redirect
+      // Send data to GAS. Note: GAS redirects on POST, so 'no-cors' is often used.
+      // We stringify the payload to ensure complex objects aren't mangled.
       await fetch(url, {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, data: payload })
+        body: JSON.stringify({ action, data: payload, timestamp: Date.now() })
       });
       return true;
     } catch (error) {
-      console.error('Sheets save error:', error);
+      console.error(`Sheets save error (${action}):`, error);
       return false;
     }
   }

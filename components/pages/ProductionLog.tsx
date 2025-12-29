@@ -27,24 +27,31 @@ export const ProductionLog: React.FC = () => {
 
   const filteredData = useMemo(() => {
     return data.filter(d => {
+      if (!d || !d.date) return false;
+      
+      // Clean date for comparison (strip time if present)
+      const entryDate = d.date.split('T')[0].trim();
+      
       const matchCat = category === 'All' || d.category === category;
       const matchProc = processType === 'All' || d.process === processType;
-      const matchStart = !dateRange.start || d.date >= dateRange.start;
-      const matchEnd = !dateRange.end || d.date <= dateRange.end;
+      const matchStart = !dateRange.start || (entryDate >= dateRange.start);
+      const matchEnd = !dateRange.end || (entryDate <= dateRange.end);
+      
       return matchCat && matchProc && matchStart && matchEnd;
-    }).sort((a, b) => b.date.localeCompare(a.date));
+    }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [data, dateRange, category, processType]);
 
   const monthlyData = useMemo(() => {
     const groups: Record<string, { plan: number, actual: number, count: number }> = {};
     
     filteredData.forEach(d => {
+        if (!d.date) return;
         const monthKey = d.date.substring(0, 7); 
         if (!groups[monthKey]) {
             groups[monthKey] = { plan: 0, actual: 0, count: 0 };
         }
-        groups[monthKey].plan += d.planQuantity;
-        groups[monthKey].actual += d.actualQuantity;
+        groups[monthKey].plan += (d.planQuantity || 0);
+        groups[monthKey].actual += (d.actualQuantity || 0);
         groups[monthKey].count++;
     });
 
@@ -55,13 +62,12 @@ export const ProductionLog: React.FC = () => {
             actual: stats.actual,
             efficiency: stats.plan > 0 ? (stats.actual / stats.plan) * 100 : 0
         }))
-        .sort((a, b) => b.month.localeCompare(a.month)); 
+        .sort((a, b) => (b.month || '').localeCompare(a.month || '')); 
   }, [filteredData]);
 
   const handleDelete = (id: string) => {
     if (!window.confirm("Are you sure you want to PERMANENTLY delete this entry?")) return;
     
-    // Atomic delete from storage
     const { deletedItem } = StorageService.deleteProductionEntry(id);
     
     if (deletedItem) {
@@ -77,7 +83,6 @@ export const ProductionLog: React.FC = () => {
         }));
     }
 
-    // Always trigger global refresh
     triggerRefresh();
   };
 
@@ -88,7 +93,7 @@ export const ProductionLog: React.FC = () => {
   };
 
   const calculateEfficiency = (actual: number, plan: number) => {
-    if (plan === 0) return 0;
+    if (!plan || plan === 0) return 0;
     return ((actual / plan) * 100).toFixed(1);
   };
 
@@ -104,14 +109,14 @@ export const ProductionLog: React.FC = () => {
         rows = filteredData.map(d => {
             const isOff = offDays.some(od => od.date === d.date);
             return [
-                d.date, isOff ? 'Holiday Shift' : 'Normal', d.category, d.process, `"${d.productName}"`, d.planQuantity, d.actualQuantity, 
-                calculateEfficiency(d.actualQuantity, d.planQuantity), d.batchNo || '', d.manpower || ''
+                (d.date || '').split('T')[0], isOff ? 'Holiday Shift' : 'Normal', d.category, d.process, `"${d.productName}"`, d.planQuantity || 0, d.actualQuantity || 0, 
+                calculateEfficiency(d.actualQuantity || 0, d.planQuantity || 0), d.batchNo || '', d.manpower || ''
             ];
         });
         filename = `production_log_daily_${today}.csv`;
     } else {
         headers = ["Month", "Total Plan", "Total Actual", "Overall Efficiency %"];
-        rows = monthlyData.map(m => [ m.month, m.plan, m.actual, m.efficiency.toFixed(2) ]);
+        rows = monthlyData.map(m => [ m.month, m.plan || 0, m.actual || 0, (m.efficiency || 0).toFixed(2) ]);
         filename = `production_summary_monthly_${today}.csv`;
     }
 
@@ -229,11 +234,12 @@ export const ProductionLog: React.FC = () => {
                       <td colSpan={8} className="px-6 py-10 text-center text-slate-400 italic">No entries found matching filters</td>
                     </tr>
                   ) : filteredData.map(entry => {
-                    const eff = Number(calculateEfficiency(entry.actualQuantity, entry.planQuantity));
-                    const isOff = offDays.some(od => od.date === entry.date);
+                    const eff = Number(calculateEfficiency(entry.actualQuantity || 0, entry.planQuantity || 0));
+                    const isOff = entry.date && offDays.some(od => od.date === entry.date);
+                    const displayDate = (entry.date || '').split('T')[0];
                     return (
                       <tr key={entry.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${isOff ? 'bg-amber-50/20 dark:bg-amber-900/10' : ''}`}>
-                        <td className="px-6 py-4 font-mono text-xs font-bold">{entry.date}</td>
+                        <td className="px-6 py-4 font-mono text-xs font-bold">{displayDate || 'N/A'}</td>
                         <td className="px-6 py-4">
                             {isOff ? (
                                 <span className="flex items-center gap-1.5 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400">
@@ -252,8 +258,8 @@ export const ProductionLog: React.FC = () => {
                             <div className="font-bold text-slate-700 dark:text-slate-200">{entry.productName}</div>
                             <div className="text-[9px] font-black uppercase text-indigo-500 tracking-tighter">{entry.process}</div>
                         </td>
-                        <td className="px-6 py-4 text-right font-black font-mono text-blue-600">{entry.planQuantity.toLocaleString()}</td>
-                        <td className="px-6 py-4 text-right font-black font-mono text-emerald-600">{entry.actualQuantity.toLocaleString()}</td>
+                        <td className="px-6 py-4 text-right font-black font-mono text-blue-600">{(entry.planQuantity || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 text-right font-black font-mono text-emerald-600">{(entry.actualQuantity || 0).toLocaleString()}</td>
                         <td className="px-6 py-4 text-right">
                             <span className={`px-2 py-1 rounded-lg text-xs font-black border ${eff >= 100 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : eff >= 80 ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
                                 {eff}%
@@ -277,11 +283,11 @@ export const ProductionLog: React.FC = () => {
                   ) : monthlyData.map(m => (
                       <tr key={m.month} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition">
                           <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-200">{m.month}</td>
-                          <td className="px-6 py-4 text-right font-mono text-blue-600">{m.plan.toLocaleString()}</td>
-                          <td className="px-6 py-4 text-right font-mono text-emerald-600">{m.actual.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right font-mono text-blue-600">{(m.plan || 0).toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right font-mono text-emerald-600">{(m.actual || 0).toLocaleString()}</td>
                           <td className="px-6 py-4 text-right font-bold">
-                            <span className={m.efficiency >= 85 ? 'text-emerald-500' : 'text-rose-500'}>
-                              {m.efficiency.toFixed(1)}%
+                            <span className={(m.efficiency || 0) >= 85 ? 'text-emerald-500' : 'text-rose-500'}>
+                              {(m.efficiency || 0).toFixed(1)}%
                             </span>
                           </td>
                       </tr>

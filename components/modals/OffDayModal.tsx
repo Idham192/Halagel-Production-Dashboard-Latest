@@ -19,7 +19,7 @@ export const OffDayModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       if(!date) return;
       if(offDays.some(od => od.date === date)) return alert('Already off day');
       const newOd: OffDay = { id: Date.now().toString(), date, description: desc || 'Holiday', createdBy: user!.id };
-      const updated = [...offDays, newOd].sort((a,b) => a.date.localeCompare(b.date));
+      const updated = [...offDays, newOd].sort((a,b) => (a.date || '').localeCompare(b.date || ''));
       StorageService.saveOffDays(updated);
       
       StorageService.addLog({
@@ -80,7 +80,7 @@ export const OffDayModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             ) : offDays.map(od => (
                 <div key={od.id} className="flex justify-between items-center bg-white dark:bg-slate-700 p-2 rounded shadow-sm text-sm border border-slate-100 dark:border-slate-600">
                     <div>
-                        <span className="font-mono font-bold text-red-500">{od.date}</span>
+                        <span className="font-mono font-bold text-red-500">{od.date || 'No Date'}</span>
                         <div className="text-xs text-gray-500 dark:text-gray-300">{od.description}</div>
                     </div>
                     <button onClick={() => handleRemove(od.id)} className="text-gray-400 hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
