@@ -102,11 +102,11 @@ export const ProductionLog: React.FC = () => {
     const today = getTodayISO();
 
     if (viewMode === 'daily') {
-        headers = ["Date", "Status", "Category", "Process", "Product", "Plan", "Actual", "Efficiency %", "Batch No", "Manpower"];
+        headers = ["Date", "Status", "Category", "Process", "Product", "Plan", "Actual", "Unit", "Efficiency %", "Batch No", "Manpower"];
         rows = filteredData.map(d => {
             const isOff = offDays.some(od => od.date === d.date);
             return [
-                d.date, isOff ? 'Holiday Shift' : 'Normal', d.category, d.process, `"${d.productName}"`, d.planQuantity || 0, d.actualQuantity || 0, 
+                d.date, isOff ? 'Holiday Shift' : 'Normal', d.category, d.process, `"${d.productName}"`, d.planQuantity || 0, d.actualQuantity || 0, d.unit || 'KG',
                 calculateEfficiency(d.actualQuantity || 0, d.planQuantity || 0), d.batchNo || '', d.manpower || ''
             ];
         });
@@ -208,10 +208,11 @@ export const ProductionLog: React.FC = () => {
                   <tr>
                     <th className="px-6 py-4">Date</th>
                     <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4 text-center">Department</th>
+                    <th className="px-6 py-4 text-center">Dept</th>
                     <th className="px-6 py-4">Product</th>
                     <th className="px-6 py-4 text-right">Plan</th>
                     <th className="px-6 py-4 text-right">Actual</th>
+                    <th className="px-6 py-4 text-center">Unit</th>
                     <th className="px-6 py-4 text-right">Eff. %</th>
                     {hasPermission(['admin', 'manager']) && <th className="px-6 py-4 text-center">Actions</th>}
                   </tr>
@@ -228,7 +229,7 @@ export const ProductionLog: React.FC = () => {
               {viewMode === 'daily' ? (
                   filteredData.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-6 py-10 text-center text-slate-400 italic">No entries found matching filters</td>
+                      <td colSpan={9} className="px-6 py-10 text-center text-slate-400 italic">No entries found matching filters</td>
                     </tr>
                   ) : filteredData.map(entry => {
                     const eff = Number(calculateEfficiency(entry.actualQuantity || 0, entry.planQuantity || 0));
@@ -256,6 +257,9 @@ export const ProductionLog: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 text-right font-black font-mono text-blue-600">{(entry.planQuantity || 0).toLocaleString()}</td>
                         <td className="px-6 py-4 text-right font-black font-mono text-emerald-600">{(entry.actualQuantity || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className="text-[10px] font-black text-slate-400">{entry.unit || 'KG'}</span>
+                        </td>
                         <td className="px-6 py-4 text-right">
                             <span className={`px-2 py-1 rounded-lg text-xs font-black border ${eff >= 100 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : eff >= 80 ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
                                 {eff}%

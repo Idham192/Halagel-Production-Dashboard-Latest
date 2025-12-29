@@ -1,9 +1,10 @@
 
 import { User, ProductionEntry, OffDay } from './types';
-import { getTodayISO } from './utils/dateUtils';
+import { getTodayISO, getDbTimestamp } from './utils/dateUtils';
 
 export const CATEGORIES = ['Healthcare', 'Toothpaste', 'Rocksalt'] as const;
 export const PROCESSES = ['Mixing', 'Encapsulation', 'Filling', 'Sorting', 'Packing'] as const;
+export const UNITS = ['KG', 'PCS'] as const;
 
 export const INITIAL_USERS: User[] = [
   { id: 'u1', name: 'Admin User', username: 'admin', email: 'admin@nexus.com', role: 'admin', password: 'password123' },
@@ -45,10 +46,11 @@ export const generateSeedProductionData = (): ProductionEntry[] => {
         productName: prod,
         planQuantity: plan,
         actualQuantity: actual,
+        unit: idx % 2 === 0 ? 'KG' : 'PCS',
         batchNo: `B-${dateStr.replace(/-/g, '')}-${idx}`,
         manpower: Math.floor(Math.random() * 5) + 3,
         lastUpdatedBy: 'u1',
-        updatedAt: new Date().toISOString()
+        updatedAt: getDbTimestamp()
       });
     });
   }

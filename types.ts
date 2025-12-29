@@ -14,6 +14,8 @@ export type Category = 'Healthcare' | 'Toothpaste' | 'Rocksalt';
 
 export type ProcessType = 'Mixing' | 'Encapsulation' | 'Filling' | 'Sorting' | 'Packing';
 
+export type UnitType = 'KG' | 'PCS';
+
 export interface ProductionEntry {
   id: string;
   date: string; // YYYY-MM-DD
@@ -22,6 +24,7 @@ export interface ProductionEntry {
   productName: string;
   planQuantity: number;
   actualQuantity: number;
+  unit: UnitType;
   batchNo?: string;
   manpower?: number;
   lastUpdatedBy: string;

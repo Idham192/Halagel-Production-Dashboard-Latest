@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { CATEGORIES, PROCESSES } from '../../constants';
+import { CATEGORIES, PROCESSES, UNITS } from '../../constants';
 import { StorageService } from '../../services/storageService';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDashboard } from '../../contexts/DashboardContext';
@@ -16,7 +16,8 @@ export const InputPlan: React.FC = () => {
     category: CATEGORIES[0],
     process: PROCESSES[0],
     productName: '',
-    quantity: ''
+    quantity: '',
+    unit: UNITS[0]
   });
   const [msg, setMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
@@ -46,6 +47,7 @@ export const InputPlan: React.FC = () => {
     try {
       const entries = StorageService.getProductionData();
       
+      // Fix: Added missing 'unit' property to the ProductionEntry object as required by the interface
       const newEntry: ProductionEntry = {
         id: Date.now().toString(),
         date: formData.date,
@@ -54,6 +56,7 @@ export const InputPlan: React.FC = () => {
         productName: formData.productName,
         planQuantity: parseInt(formData.quantity),
         actualQuantity: 0,
+        unit: formData.unit as any,
         lastUpdatedBy: user!.id,
         updatedAt: new Date().toISOString()
       };
@@ -63,12 +66,12 @@ export const InputPlan: React.FC = () => {
         userId: user!.id,
         userName: user!.name,
         action: 'CREATE_PLAN',
-        details: `Planned ${newEntry.planQuantity} for ${newEntry.productName} on ${newEntry.date}`
+        details: `Planned ${newEntry.planQuantity} ${newEntry.unit} for ${newEntry.productName} on ${newEntry.date}`
       });
 
       triggerRefresh();
       setMsg({ type: 'success', text: 'Plan entry added successfully.' });
-      setFormData({ ...formData, productName: '', quantity: '' });
+      setFormData(prev => ({ ...prev, productName: '', quantity: '' }));
       
       window.dispatchEvent(new CustomEvent('app-notification', { 
         detail: { message: 'PRODUCTION PLAN SUBMITTED', type: 'success' } 
@@ -137,14 +140,23 @@ export const InputPlan: React.FC = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Plan Quantity</label>
-              <input 
-                type="number" 
-                min="1"
-                required
-                className="w-full px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 dark:bg-slate-900 dark:text-white"
-                value={formData.quantity}
-                onChange={e => setFormData({...formData, quantity: e.target.value})}
-              />
+              <div className="flex gap-2">
+                <input 
+                  type="number" 
+                  min="1"
+                  required
+                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 dark:bg-slate-900 dark:text-white"
+                  value={formData.quantity}
+                  onChange={e => setFormData({...formData, quantity: e.target.value})}
+                />
+                <select 
+                  className="w-24 px-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 dark:bg-slate-900 dark:text-white"
+                  value={formData.unit}
+                  onChange={e => setFormData({...formData, unit: e.target.value as any})}
+                >
+                  {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
             </div>
           </div>
 

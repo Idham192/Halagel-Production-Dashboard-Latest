@@ -119,13 +119,13 @@ export const Dashboard: React.FC = () => {
   };
 
   const downloadCSV = () => {
-    const headers = ["Date", "Status", "Process", "Product", "Plan", "Actual", "Batch No", "Manpower"];
+    const headers = ["Date", "Status", "Process", "Product", "Plan", "Actual", "Unit", "Batch No", "Manpower"];
     const rows = dailyGroups.flatMap(g => {
         if (g.entries.length === 0) {
-            return [[g.date, g.offDayName || 'Off Day', '-', '-', 0, 0, '-', 0]];
+            return [[g.date, g.offDayName || 'Off Day', '-', '-', 0, 0, '-', '-', 0]];
         }
         return g.entries.map(d => [
-            d.date, g.isOffDay ? `Holiday (${g.offDayName})` : 'Normal', d.process, d.productName, d.planQuantity, d.actualQuantity, d.batchNo, d.manpower
+            d.date, g.isOffDay ? `Holiday (${g.offDayName})` : 'Normal', d.process, d.productName, d.planQuantity, d.actualQuantity, d.unit || 'KG', d.batchNo, d.manpower
         ]);
     });
     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -296,8 +296,8 @@ export const Dashboard: React.FC = () => {
                                                 <td className="px-8 py-5">
                                                     <span className="text-sm font-black text-slate-800 dark:text-white">{entry.productName}</span>
                                                 </td>
-                                                <td className="px-8 py-5 text-right font-black text-indigo-600/80 dark:text-indigo-400/80">{(entry.planQuantity || 0).toLocaleString()}</td>
-                                                <td className="px-8 py-5 text-right font-black text-emerald-500">{(entry.actualQuantity || 0).toLocaleString()}</td>
+                                                <td className="px-8 py-5 text-right font-black text-indigo-600/80 dark:text-indigo-400/80">{(entry.planQuantity || 0).toLocaleString()} {entry.unit}</td>
+                                                <td className="px-8 py-5 text-right font-black text-emerald-500">{(entry.actualQuantity || 0).toLocaleString()} {entry.unit}</td>
                                                 <td className="px-8 py-5 text-center">
                                                     <span className={`text-xs font-black ${eff >= 100 ? 'text-emerald-500' : eff >= 75 ? 'text-amber-500' : 'text-rose-500'}`}>
                                                         {(eff || 0).toFixed(0)}%

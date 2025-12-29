@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useDashboard } from '../../contexts/DashboardContext';
 import { ActivityLog as LogEntry } from '../../types';
 import { History, User, Clock } from 'lucide-react';
+import { formatFullTimestamp } from '../../utils/dateUtils';
 
 export const ActivityLog: React.FC = () => {
   const { user: authUser } = useAuth();
@@ -66,13 +67,10 @@ export const ActivityLog: React.FC = () => {
                         <div className="text-right flex flex-col items-end gap-1 shrink-0">
                            <div className="flex items-center gap-1.5 text-slate-400">
                               <Clock className="w-3.5 h-3.5" />
-                              <span className="text-[10px] font-black uppercase tracking-widest">
-                                {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                                {formatFullTimestamp(log.timestamp)}
                               </span>
                            </div>
-                           <span className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">
-                              {new Date(log.timestamp).toLocaleDateString()}
-                           </span>
                         </div>
                     </div>
                 </li>

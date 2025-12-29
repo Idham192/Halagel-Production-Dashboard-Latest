@@ -3,8 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDashboard } from '../../contexts/DashboardContext';
 import { StorageService } from '../../services/storageService';
-import { CATEGORIES, PROCESSES } from '../../constants';
-import { ProductionEntry, Category, ProcessType } from '../../types';
+import { CATEGORIES, PROCESSES, UNITS } from '../../constants';
+import { ProductionEntry, Category, ProcessType, UnitType } from '../../types';
 import { X, Loader2, AlertTriangle, Palmtree } from 'lucide-react';
 import { getTodayISO, getDbTimestamp } from '../../utils/dateUtils';
 
@@ -24,6 +24,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
   const [process, setProcess] = useState<ProcessType>(PROCESSES[0]);
   const [productName, setProductName] = useState('');
   const [quantity, setQuantity] = useState('');
+  const [unit, setUnit] = useState<UnitType>('KG');
   const [manpower, setManpower] = useState('0');
   const [batchNo, setBatchNo] = useState('');
   
@@ -52,6 +53,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
       setCategory(editEntry.category);
       setProcess(editEntry.process);
       setProductName(editEntry.productName);
+      setUnit(editEntry.unit || 'KG');
       const isActualMode = editEntry.actualQuantity > 0;
       setQuantity(isActualMode ? (editEntry.actualQuantity || 0).toString() : (editEntry.planQuantity || 0).toString());
       setManpower(editEntry.manpower?.toString() || '0');
@@ -99,6 +101,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
             if (editEntry.productName !== productName) changes.push(`Product (${editEntry.productName} → ${productName})`);
             if (editEntry.category !== category) changes.push(`Category (${editEntry.category} → ${category})`);
             if (editEntry.process !== process) changes.push(`Process (${editEntry.process} → ${process})`);
+            if (editEntry.unit !== unit) changes.push(`Unit (${editEntry.unit} → ${unit})`);
             
             if (tab === 'Plan') {
               if (editEntry.planQuantity !== newQty) changes.push(`Plan Qty (${editEntry.planQuantity} → ${newQty})`);
@@ -114,7 +117,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                     return { 
                         ...p, 
                         date: normalizedDate, 
-                        category, process, productName,
+                        category, process, productName, unit,
                         planQuantity: tab === 'Plan' ? newQty : p.planQuantity,
                         actualQuantity: tab === 'Actual' ? newQty : p.actualQuantity,
                         batchNo, manpower: newManpower,
@@ -141,7 +144,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                 const newEntry: ProductionEntry = {
                     id: Date.now().toString(),
                     date: normalizedDate, 
-                    category, process, productName, 
+                    category, process, productName, unit,
                     planQuantity: parseInt(quantity || '0'), actualQuantity: 0,
                     lastUpdatedBy: user!.id, updatedAt: getDbTimestamp()
                 };
@@ -150,7 +153,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                   userId: user!.id,
                   userName: user!.name,
                   action: 'CREATE_PLAN',
-                  details: `Planned ${newEntry.planQuantity} units for ${newEntry.productName} (${normalizedDate})`
+                  details: `Planned ${newEntry.planQuantity} ${newEntry.unit} for ${newEntry.productName} (${normalizedDate})`
                 });
             } else {
                 if (!selectedPlanId) throw new Error("Please select a plan");
@@ -170,7 +173,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                   userId: user!.id,
                   userName: user!.name,
                   action: 'RECORD_ACTUAL',
-                  details: `Recorded actual output of ${quantity} units for ${targetPlan?.productName || 'product'}`
+                  details: `Recorded actual output of ${quantity} ${targetPlan?.unit || 'KG'} for ${targetPlan?.productName || 'product'}`
                 });
             }
         }
@@ -265,10 +268,18 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                             <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Product Name</label>
                             <input type="text" required value={productName} onChange={e => setProductName(e.target.value)} className={inputClasses} placeholder="Enter name..." />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                              <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Quantity</label>
-                              <input type="number" required min="1" value={quantity} onChange={e => setQuantity(e.target.value)} className={inputClasses} />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="flex gap-2">
+                              <div className="flex-1">
+                                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Quantity</label>
+                                  <input type="number" required min="1" value={quantity} onChange={e => setQuantity(e.target.value)} className={inputClasses} />
+                              </div>
+                              <div className="w-24">
+                                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Unit</label>
+                                  <select value={unit} onChange={e => setUnit(e.target.value as UnitType)} className={inputClasses}>
+                                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                                  </select>
+                              </div>
                           </div>
                           {editEntry && (
                             <div>
@@ -294,7 +305,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                                          <div key={p.id} onClick={() => setSelectedPlanId(p.id)}
                                             className={`p-3 rounded-lg cursor-pointer transition ${selectedPlanId === p.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800'}`}>
                                             <div className="font-black text-sm">{p.productName}</div>
-                                            <div className={`text-[10px] font-bold uppercase ${selectedPlanId === p.id ? 'text-indigo-100' : 'text-slate-400'}`}>{p.process} • Plan: {p.planQuantity}</div>
+                                            <div className={`text-[10px] font-bold uppercase ${selectedPlanId === p.id ? 'text-indigo-100' : 'text-slate-400'}`}>{p.process} • Plan: {p.planQuantity} {p.unit || 'KG'}</div>
                                          </div>
                                      ))}
                                  </div>

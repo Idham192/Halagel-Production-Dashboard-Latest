@@ -28,9 +28,11 @@ export const LoginModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 w-full max-w-sm shadow-2xl relative animate-in fade-in zoom-in duration-200">
         <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"><X className="w-5 h-5" /></button>
         
-        <div className="mb-8">
-            <h3 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-2">
-                <Lock className="w-6 h-6 text-indigo-600" />
+        <div className="mb-8 flex flex-col items-center text-center">
+            <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-2xl mb-4">
+                <Lock className="w-7 h-7 text-indigo-600" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-800 dark:text-white">
                 Welcome Back
             </h3>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">HALAGEL Production System</p>

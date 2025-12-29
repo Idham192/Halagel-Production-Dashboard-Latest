@@ -27,10 +27,11 @@ const normalizeProduction = (data: any): ProductionEntry => {
       productName: String(data[4] || 'Unknown'),
       planQuantity: Number(data[5] || 0),
       actualQuantity: Number(data[6] || 0),
-      batchNo: String(data[7] || ''),
-      manpower: Number(data[8] || 0),
-      lastUpdatedBy: String(data[9] || ''),
-      updatedAt: String(data[10] || getDbTimestamp())
+      unit: (String(data[7] || 'KG') as any).toUpperCase() === 'PCS' ? 'PCS' : 'KG',
+      batchNo: String(data[8] || ''),
+      manpower: Number(data[9] || 0),
+      lastUpdatedBy: String(data[10] || ''),
+      updatedAt: String(data[11] || getDbTimestamp())
     };
   } else {
     entry = {
@@ -40,6 +41,7 @@ const normalizeProduction = (data: any): ProductionEntry => {
       productName: String(data.productName || 'Unknown'),
       planQuantity: Number(data.planQuantity || 0),
       actualQuantity: Number(data.actualQuantity || 0),
+      unit: (String(data.unit || 'KG') as any).toUpperCase() === 'PCS' ? 'PCS' : 'KG',
       manpower: Number(data.manpower || 0),
       batchNo: String(data.batchNo || ''),
       process: String(data.process || 'Mixing') as any,
@@ -131,6 +133,7 @@ export const StorageService = {
   saveProductionData: (data: ProductionEntry[]) => {
     const cleaned = data.map(normalizeProduction).filter(p => p.date && p.date.length > 0);
     localStorage.setItem(KEYS.PRODUCTION, JSON.stringify(cleaned));
+    // Explicit action 'saveProduction' targets the Production Report sheet
     GoogleSheetsService.saveData('saveProduction', cleaned);
   },
 
@@ -157,6 +160,7 @@ export const StorageService = {
   saveOffDays: (days: OffDay[]) => {
     const cleaned = days.map(normalizeOffDay).filter(od => od.date && od.date.length > 0);
     localStorage.setItem(KEYS.OFF_DAYS, JSON.stringify(cleaned));
+    // Explicit action 'saveOffDays' targets the Public Holidays sheet
     GoogleSheetsService.saveData('saveOffDays', cleaned);
   },
 
@@ -213,6 +217,7 @@ export const StorageService = {
       if (logs.length > 500) logs.pop(); 
       
       localStorage.setItem(KEYS.LOGS, JSON.stringify(logs));
+      // Explicit action 'saveLogs' targets the Activity Log sheet
       GoogleSheetsService.saveData('saveLogs', logs);
     } catch (err) {
       console.error("Logging error:", err);
