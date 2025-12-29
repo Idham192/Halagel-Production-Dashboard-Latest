@@ -25,6 +25,60 @@ export const getCurrentMonthISO = (): string => {
 };
 
 /**
+ * Returns the current date and time in the format YYYY-MM-DD HH:mm:ss
+ * tailored for database/sheet storage.
+ */
+export const getDbTimestamp = (): string => {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kuala_Lumpur',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  const parts = formatter.formatToParts(now);
+  const find = (type: string) => parts.find(p => p.type === type)?.value;
+  
+  return `${find('year')}-${find('month')}-${find('day')} ${find('hour')}:${find('minute')}:${find('second')}`;
+};
+
+/**
+ * Formats ISO or DB timestamp string to YYYY-MM-DD HH:mm:ss in Malaysia Time.
+ */
+export const formatFullTimestamp = (isoStr: string): string => {
+  if (!isoStr) return '';
+  
+  // If already in DB format, return as is
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(isoStr)) {
+    return isoStr;
+  }
+
+  const date = new Date(isoStr);
+  if (isNaN(date.getTime())) return isoStr;
+  
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kuala_Lumpur',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  const parts = formatter.formatToParts(date);
+  const find = (type: string) => parts.find(p => p.type === type)?.value;
+  
+  return `${find('year')}-${find('month')}-${find('day')} ${find('hour')}:${find('minute')}:${find('second')}`;
+};
+
+/**
  * Formats YYYY-MM-DD for display (e.g., "2025-12-28 SUNDAY").
  * 100% safe from "Yesterday Bug":
  * 1. Splits the string manually to avoid UTC conversion.
@@ -35,7 +89,7 @@ export const formatDisplayDate = (dateStr: string): string => {
   if (!dateStr) return 'Invalid Date';
 
   // Take only the date part YYYY-MM-DD
-  const cleanDate = dateStr.split('T')[0];
+  const cleanDate = dateStr.split(' ')[0].split('T')[0];
   const parts = cleanDate.split('-');
   
   if (parts.length !== 3) return cleanDate;
@@ -44,9 +98,6 @@ export const formatDisplayDate = (dateStr: string): string => {
   const month = parseInt(parts[1], 10);
   const day = parseInt(parts[2], 10);
   
-  // Construct date object at NOON (12:00:00) Malaysia Time.
-  // This ensures that even if a user is in a different timezone, 
-  // the +/- 12h shift won't change the date.
   const localDate = new Date(year, month - 1, day, 12, 0, 0);
   
   if (isNaN(localDate.getTime())) return cleanDate;

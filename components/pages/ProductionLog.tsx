@@ -27,16 +27,11 @@ export const ProductionLog: React.FC = () => {
 
   const filteredData = useMemo(() => {
     return data.filter(d => {
-      if (!d || !d.date) return false;
-      
-      // Clean date for comparison (strip time if present)
-      const entryDate = d.date.split('T')[0].trim();
-      
+      if (!d) return false;
       const matchCat = category === 'All' || d.category === category;
       const matchProc = processType === 'All' || d.process === processType;
-      const matchStart = !dateRange.start || (entryDate >= dateRange.start);
-      const matchEnd = !dateRange.end || (entryDate <= dateRange.end);
-      
+      const matchStart = !dateRange.start || (d.date && d.date >= dateRange.start);
+      const matchEnd = !dateRange.end || (d.date && d.date <= dateRange.end);
       return matchCat && matchProc && matchStart && matchEnd;
     }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }, [data, dateRange, category, processType]);
@@ -68,6 +63,7 @@ export const ProductionLog: React.FC = () => {
   const handleDelete = (id: string) => {
     if (!window.confirm("Are you sure you want to PERMANENTLY delete this entry?")) return;
     
+    // Atomic delete from storage
     const { deletedItem } = StorageService.deleteProductionEntry(id);
     
     if (deletedItem) {
@@ -83,6 +79,7 @@ export const ProductionLog: React.FC = () => {
         }));
     }
 
+    // Always trigger global refresh
     triggerRefresh();
   };
 
@@ -109,7 +106,7 @@ export const ProductionLog: React.FC = () => {
         rows = filteredData.map(d => {
             const isOff = offDays.some(od => od.date === d.date);
             return [
-                (d.date || '').split('T')[0], isOff ? 'Holiday Shift' : 'Normal', d.category, d.process, `"${d.productName}"`, d.planQuantity || 0, d.actualQuantity || 0, 
+                d.date, isOff ? 'Holiday Shift' : 'Normal', d.category, d.process, `"${d.productName}"`, d.planQuantity || 0, d.actualQuantity || 0, 
                 calculateEfficiency(d.actualQuantity || 0, d.planQuantity || 0), d.batchNo || '', d.manpower || ''
             ];
         });
@@ -236,10 +233,9 @@ export const ProductionLog: React.FC = () => {
                   ) : filteredData.map(entry => {
                     const eff = Number(calculateEfficiency(entry.actualQuantity || 0, entry.planQuantity || 0));
                     const isOff = entry.date && offDays.some(od => od.date === entry.date);
-                    const displayDate = (entry.date || '').split('T')[0];
                     return (
                       <tr key={entry.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${isOff ? 'bg-amber-50/20 dark:bg-amber-900/10' : ''}`}>
-                        <td className="px-6 py-4 font-mono text-xs font-bold">{displayDate || 'N/A'}</td>
+                        <td className="px-6 py-4 font-mono text-xs font-bold">{entry.date || 'N/A'}</td>
                         <td className="px-6 py-4">
                             {isOff ? (
                                 <span className="flex items-center gap-1.5 text-[9px] font-black uppercase text-amber-600 dark:text-amber-400">

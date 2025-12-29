@@ -6,7 +6,7 @@ import { StorageService } from '../../services/storageService';
 import { CATEGORIES, PROCESSES } from '../../constants';
 import { ProductionEntry, Category, ProcessType } from '../../types';
 import { X, Loader2, AlertTriangle, Palmtree } from 'lucide-react';
-import { getTodayISO } from '../../utils/dateUtils';
+import { getTodayISO, getDbTimestamp } from '../../utils/dateUtils';
 
 interface InputModalProps {
   onClose: () => void;
@@ -32,8 +32,8 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
 
   const offDays = useMemo(() => StorageService.getOffDays(), []);
   const currentOffDay = useMemo(() => {
-    const inputDate = (date || '').trim().substring(0, 10);
-    return offDays.find(od => (od.date || '').trim().substring(0, 10) === inputDate);
+    const inputDate = (date || '').trim().split(' ')[0];
+    return offDays.find(od => (od.date || '').trim().split(' ')[0] === inputDate);
   }, [date, offDays]);
 
   const inputClasses = "w-full p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-sm";
@@ -48,11 +48,10 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
 
   useEffect(() => {
     if (editEntry) {
-      setDate((editEntry.date || '').trim().substring(0, 10));
+      setDate((editEntry.date || '').trim().split(' ')[0]);
       setCategory(editEntry.category);
       setProcess(editEntry.process);
       setProductName(editEntry.productName);
-      // Determine which quantity to show in the single input field based on the mode
       const isActualMode = editEntry.actualQuantity > 0;
       setQuantity(isActualMode ? (editEntry.actualQuantity || 0).toString() : (editEntry.planQuantity || 0).toString());
       setManpower(editEntry.manpower?.toString() || '0');
@@ -67,8 +66,8 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
   useEffect(() => {
     if (tab === 'Actual' && !editEntry) {
         const all = StorageService.getProductionData();
-        const normalizedInputDate = (date || '').trim().substring(0, 10);
-        const relevant = all.filter(p => (p.date || '').trim().substring(0, 10) === normalizedInputDate);
+        const normalizedInputDate = (date || '').trim().split(' ')[0];
+        const relevant = all.filter(p => (p.date || '').trim().split(' ')[0] === normalizedInputDate);
         setPlans(relevant);
         setSelectedPlanId('');
     }
@@ -78,8 +77,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
     e.preventDefault();
     setIsSubmitting(true);
     
-    // Strict normalization to YYYY-MM-DD
-    const normalizedDate = (date || '').trim().split('T')[0].substring(0, 10);
+    const normalizedDate = (date || '').trim().split(' ')[0];
 
     if (!editEntry && currentOffDay) {
         window.dispatchEvent(new CustomEvent('app-notification', { 
@@ -93,7 +91,6 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
 
     try {
         if (editEntry) {
-            // Track what changed for the log
             const changes: string[] = [];
             const newQty = parseInt(quantity || '0');
             const newManpower = parseInt(manpower || '0');
@@ -121,7 +118,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                         planQuantity: tab === 'Plan' ? newQty : p.planQuantity,
                         actualQuantity: tab === 'Actual' ? newQty : p.actualQuantity,
                         batchNo, manpower: newManpower,
-                        lastUpdatedBy: user!.id, updatedAt: new Date().toISOString()
+                        lastUpdatedBy: user!.id, updatedAt: getDbTimestamp()
                     };
                 }
                 return p;
@@ -129,7 +126,6 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
 
             StorageService.saveProductionData(updated);
             
-            // Build Contextual Log Details: "Edited Product (Process) on Date: Changes"
             const logDetails = changes.length > 0 
               ? `Edited ${productName} (${editEntry.process}) on ${editEntry.date}: ${changes.join(', ')}`
               : `Updated record for ${productName} (${editEntry.process}) on ${editEntry.date} (No values changed)`;
@@ -147,7 +143,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                     date: normalizedDate, 
                     category, process, productName, 
                     planQuantity: parseInt(quantity || '0'), actualQuantity: 0,
-                    lastUpdatedBy: user!.id, updatedAt: new Date().toISOString()
+                    lastUpdatedBy: user!.id, updatedAt: getDbTimestamp()
                 };
                 StorageService.saveProductionData([...currentData, newEntry]);
                 StorageService.addLog({
@@ -164,7 +160,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                         return { 
                             ...p, 
                             actualQuantity: parseInt(quantity || '0'), batchNo, manpower: parseInt(manpower || '0'),
-                            lastUpdatedBy: user!.id, updatedAt: new Date().toISOString()
+                            lastUpdatedBy: user!.id, updatedAt: getDbTimestamp()
                         };
                     }
                     return p;

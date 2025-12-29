@@ -2,6 +2,7 @@
 import { User, ProductionEntry, OffDay, ActivityLog } from '../types';
 import { INITIAL_USERS, INITIAL_OFF_DAYS, generateSeedProductionData } from '../constants';
 import { GoogleSheetsService } from './googleSheetsService';
+import { getDbTimestamp } from '../utils/dateUtils';
 
 const KEYS = {
   USERS: 'halagel_users',
@@ -20,7 +21,7 @@ const normalizeProduction = (data: any): ProductionEntry => {
   if (Array.isArray(data)) {
     entry = {
       id: String(data[0] || Date.now()),
-      date: String(data[1] || ''),
+      date: String(data[1] || '').split(' ')[0],
       category: String(data[2] || 'Healthcare') as any,
       process: String(data[3] || 'Mixing') as any,
       productName: String(data[4] || 'Unknown'),
@@ -29,20 +30,21 @@ const normalizeProduction = (data: any): ProductionEntry => {
       batchNo: String(data[7] || ''),
       manpower: Number(data[8] || 0),
       lastUpdatedBy: String(data[9] || ''),
-      updatedAt: String(data[10] || new Date().toISOString())
+      updatedAt: String(data[10] || getDbTimestamp())
     };
   } else {
     entry = {
       ...data,
       id: String(data.id || Date.now()),
-      date: String(data.date || ''),
+      date: String(data.date || '').split(' ')[0],
       productName: String(data.productName || 'Unknown'),
       planQuantity: Number(data.planQuantity || 0),
       actualQuantity: Number(data.actualQuantity || 0),
       manpower: Number(data.manpower || 0),
       batchNo: String(data.batchNo || ''),
       process: String(data.process || 'Mixing') as any,
-      category: String(data.category || 'Healthcare') as any
+      category: String(data.category || 'Healthcare') as any,
+      updatedAt: String(data.updatedAt || getDbTimestamp())
     };
   }
   return entry as ProductionEntry;
@@ -55,7 +57,7 @@ const normalizeLog = (data: any): ActivityLog => {
   if (Array.isArray(data)) {
     return {
       id: String(data[0] || Date.now()),
-      timestamp: String(data[1] || new Date().toISOString()),
+      timestamp: String(data[1] || getDbTimestamp()),
       userId: String(data[2] || ''),
       userName: String(data[3] || 'System'),
       action: String(data[4] || 'LOG'),
@@ -65,7 +67,7 @@ const normalizeLog = (data: any): ActivityLog => {
   return {
     ...data,
     id: String(data.id || Date.now()),
-    timestamp: String(data.timestamp || new Date().toISOString()),
+    timestamp: String(data.timestamp || getDbTimestamp()),
     userName: String(data.userName || 'Unknown'),
     details: String(data.details || '')
   };
@@ -78,7 +80,7 @@ const normalizeOffDay = (data: any): OffDay => {
   if (Array.isArray(data)) {
     return {
       id: String(data[0] || Date.now()),
-      date: String(data[1] || ''),
+      date: String(data[1] || '').split(' ')[0],
       description: String(data[2] || 'Holiday'),
       createdBy: String(data[3] || 'System')
     };
@@ -86,7 +88,7 @@ const normalizeOffDay = (data: any): OffDay => {
   return {
     ...data,
     id: String(data.id || Date.now()),
-    date: String(data.date || ''),
+    date: String(data.date || '').split(' ')[0],
     description: String(data.description || 'Holiday')
   };
 };
@@ -161,7 +163,6 @@ export const StorageService = {
   syncWithSheets: async () => {
     if (!GoogleSheetsService.isEnabled()) return;
     
-    // Multi-part sync to ensure logs and data are all updated
     try {
       const results = await Promise.all([
         GoogleSheetsService.fetchData<any[]>('getProduction'),
@@ -206,10 +207,10 @@ export const StorageService = {
       const newLog: ActivityLog = {
         ...log,
         id: Date.now().toString(),
-        timestamp: new Date().toISOString(),
+        timestamp: getDbTimestamp(),
       };
       logs.unshift(newLog);
-      if (logs.length > 500) logs.pop(); // Keep manageable size
+      if (logs.length > 500) logs.pop(); 
       
       localStorage.setItem(KEYS.LOGS, JSON.stringify(logs));
       GoogleSheetsService.saveData('saveLogs', logs);

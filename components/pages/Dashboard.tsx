@@ -65,31 +65,22 @@ export const Dashboard: React.FC = () => {
 
   const dailyGroups = useMemo(() => {
     const baseData = dashboardData.filteredData;
-    
-    // Normalize dates to YYYY-MM-DD for filter matching
-    const filteredEntries = baseData.filter(d => {
-        if (!d || !d.date) return false;
-        return d.date.trim().startsWith(selectedMonth);
-    });
-
-    const filteredOffDays = offDays.filter(od => {
-        if (!od || !od.date) return false;
-        return od.date.trim().startsWith(selectedMonth);
-    });
+    const filteredEntries = baseData.filter(d => d && d.date && d.date.trim().startsWith(selectedMonth));
+    const filteredOffDays = offDays.filter(od => od && od.date && od.date.trim().startsWith(selectedMonth));
 
     const dates = new Set<string>();
     filteredEntries.forEach(d => {
-      if (d.date) dates.add(d.date.trim().split('T')[0]);
+      if (d.date) dates.add(d.date.trim().substring(0, 10));
     });
     filteredOffDays.forEach(od => {
-      if (od.date) dates.add(od.date.trim().split('T')[0]);
+      if (od.date) dates.add(od.date.trim().substring(0, 10));
     });
     
     const sortedDates = Array.from(dates).sort((a, b) => (b || '').localeCompare(a || ''));
 
     return sortedDates.map(dateKey => {
-        const entriesForDate = filteredEntries.filter(d => d.date && d.date.trim().split('T')[0] === dateKey);
-        const offDayInfo = filteredOffDays.find(od => od.date && od.date.trim().split('T')[0] === dateKey);
+        const entriesForDate = filteredEntries.filter(d => d.date && d.date.trim().substring(0, 10) === dateKey);
+        const offDayInfo = filteredOffDays.find(od => od.date && od.date.trim().substring(0, 10) === dateKey);
         const totalActualForDate = entriesForDate.reduce((sum, entry) => sum + (entry.actualQuantity || 0), 0);
         
         return {
@@ -324,7 +315,7 @@ export const Dashboard: React.FC = () => {
                                                           <button onClick={() => handleEdit(entry)} className="p-1.5 text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition">
                                                               <Pencil className="w-4 h-4" />
                                                           </button>
-                                                          <button onClick={() => handleDelete(entry.id)} className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition">
+                                                          <button onClick={() => handleDelete(entry.id)} className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition">
                                                               <Trash2 className="w-4 h-4" />
                                                           </button>
                                                       </div>
