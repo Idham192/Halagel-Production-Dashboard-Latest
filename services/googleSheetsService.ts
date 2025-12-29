@@ -6,7 +6,7 @@ import { ProductionEntry, OffDay, User } from '../types';
  * 
  * Replace the placeholder below with the URL from Step 2.
  */
-export const HARDCODED_URL = "PASTE_YOUR_COPIED_APPS_SCRIPT_URL_HERE"; 
+export const HARDCODED_URL = "https://script.google.com/macros/s/AKfycbxtKlilIeY29korDWL7O31AW39ST4wEL-fiKUC8anox358kTibjVlYC1z-MGxl_FXxbrg/exec"; 
 
 const getSheetUrl = () => {
   const savedUrl = localStorage.getItem('halagel_sheets_api_url');
