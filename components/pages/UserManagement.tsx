@@ -1,15 +1,18 @@
 
 import React, { useState } from 'react';
 import { StorageService } from '../../services/storageService';
+import { GoogleSheetsService } from '../../services/googleSheetsService';
 import { useAuth } from '../../contexts/AuthContext';
 import { User, Role } from '../../types';
-import { Trash2, Edit2, Check, X, Plus, Database, ShieldCheck } from 'lucide-react';
+import { Trash2, Plus, Database, ShieldCheck, X, Check } from 'lucide-react';
 
 export const UserManagement: React.FC = () => {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>(StorageService.getUsers());
   const [isAdding, setIsAdding] = useState(false);
-  const [sheetUrl, setSheetUrl] = useState(localStorage.getItem('halagel_sheets_api_url') || '');
+  
+  // Use the service to get the active URL (either local or hardcoded)
+  const [sheetUrl, setSheetUrl] = useState(localStorage.getItem('halagel_sheets_api_url') || GoogleSheetsService.getActiveUrl());
   
   const [newUser, setNewUser] = useState<Omit<User, 'id'>>({
       name: '',
@@ -71,25 +74,37 @@ export const UserManagement: React.FC = () => {
     <div className="space-y-8">
         {/* DB CONFIG FOR ADMINS */}
         <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl border border-indigo-100 dark:border-indigo-900/30 shadow-sm">
-            <div className="flex items-center gap-3 mb-6">
-                <Database className="w-6 h-6 text-indigo-500" />
-                <div>
-                    <h3 className="text-lg font-black text-slate-800 dark:text-white leading-none">Database Connection</h3>
-                    <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Link dashboard to Google Sheets</p>
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                    <Database className="w-6 h-6 text-indigo-500" />
+                    <div>
+                        <h3 className="text-lg font-black text-slate-800 dark:text-white leading-none">Database Connection</h3>
+                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Status: {localStorage.getItem('halagel_sheets_api_url') ? 'Manual Override' : 'System Default (Active)'}</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-full">
+                    <Check className="w-3 h-3 text-emerald-600" />
+                    <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Live Sync Enabled</span>
                 </div>
             </div>
+            
             <div className="flex flex-col md:flex-row gap-3">
-                <input 
-                    type="password"
-                    placeholder="Paste Google Apps Script Deployment URL here..."
-                    className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono"
-                    value={sheetUrl}
-                    onChange={(e) => setSheetUrl(e.target.value)}
-                />
-                <button onClick={handleSaveSheetUrl} className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4" /> Save Connection
+                <div className="flex-1 relative">
+                  <input 
+                      type="text"
+                      placeholder="Google Apps Script URL"
+                      className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 text-[11px] font-mono text-slate-600 dark:text-slate-300"
+                      value={sheetUrl}
+                      onChange={(e) => setSheetUrl(e.target.value)}
+                  />
+                </div>
+                <button onClick={handleSaveSheetUrl} className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20">
+                    <ShieldCheck className="w-4 h-4" /> Save Configuration
                 </button>
             </div>
+            <p className="mt-4 text-[10px] text-slate-400 font-medium italic">
+              Note: This URL links your dashboard to the Google Sheets "Database Bridge". Do not change unless moving to a new spreadsheet.
+            </p>
         </div>
 
         <div className="flex justify-between items-center">

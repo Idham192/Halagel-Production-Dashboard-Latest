@@ -2,27 +2,29 @@
 import { ProductionEntry, OffDay, User } from '../types';
 
 /**
- * GOOGLE SHEETS SETUP INSTRUCTIONS:
- * 1. Create a Google Sheet.
- * 2. In Extensions > Apps Script, paste the updated Code.gs provided.
- * 3. Deploy as Web App (Set "Who has access" to "Anyone").
- * 4. Paste the Web App URL in the Dashboard Setup.
+ * GOOGLE SHEETS CONFIGURATION
+ * 
+ * The app uses this URL as the default database connection.
  */
+export const HARDCODED_URL = "https://script.google.com/macros/s/AKfycbzbIZqMRFdmYfF5FXhTKecEjf_zh47TU5SKK27zGRKb2gYL5JpyIfiVMVKJZwuAMfLm/exec"; 
 
-const getSheetUrl = () => localStorage.getItem('halagel_sheets_api_url') || '';
+const getSheetUrl = () => localStorage.getItem('halagel_sheets_api_url') || HARDCODED_URL;
 
 export const GoogleSheetsService = {
   isEnabled: () => !!getSheetUrl(),
+  
+  getActiveUrl: () => getSheetUrl(),
 
   fetchData: async <T>(action: string): Promise<T | null> => {
     const url = getSheetUrl();
     if (!url) return null;
 
     try {
-      // We use a proxy-safe GET request
-      const response = await fetch(`${url}?action=${action}`);
+      // Use cache-busting to ensure fresh data from the sheet
+      const response = await fetch(`${url}?action=${action}&_t=${Date.now()}`);
       if (!response.ok) throw new Error('Network error');
-      return await response.json();
+      const json = await response.json();
+      return json;
     } catch (error) {
       console.error('Sheets fetch error:', error);
       return null;
@@ -34,7 +36,8 @@ export const GoogleSheetsService = {
     if (!url) return false;
 
     try {
-      // Note: Apps Script redirect requires no-cors for simple POST
+      // POST to Google Apps Script
+      // We use 'no-cors' to avoid preflight issues with Google's redirect
       await fetch(url, {
         method: 'POST',
         mode: 'no-cors',

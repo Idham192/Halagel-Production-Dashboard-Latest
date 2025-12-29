@@ -52,7 +52,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
       setQuantity(editEntry.planQuantity.toString());
       setManpower(editEntry.manpower?.toString() || '0');
       setBatchNo(editEntry.batchNo || '');
-      setTab('Plan'); 
+      setTab(editEntry.actualQuantity > 0 ? 'Actual' : 'Plan'); 
     } else {
       if (user?.role === 'operator') setTab('Actual');
       else if (user?.role === 'planner') setTab('Plan');
@@ -72,6 +72,9 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
     e.preventDefault();
     setIsSubmitting(true);
     
+    // Safety: Strip any time info and just keep YYYY-MM-DD
+    const normalizedDate = date.split('T')[0];
+
     if (!editEntry && currentOffDay) {
         window.dispatchEvent(new CustomEvent('app-notification', { 
             detail: { message: `ENTRY RESTRICTED: Today is ${currentOffDay.description}`, type: 'info' } 
@@ -88,7 +91,8 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                 if (p.id === editEntry.id) {
                     return { 
                         ...p, 
-                        date, category, process, productName,
+                        date: normalizedDate, 
+                        category, process, productName,
                         planQuantity: tab === 'Plan' ? parseInt(quantity) : p.planQuantity,
                         actualQuantity: tab === 'Actual' ? parseInt(quantity) : p.actualQuantity,
                         batchNo, manpower: parseInt(manpower),
@@ -102,32 +106,20 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
               userId: user!.id,
               userName: user!.name,
               action: 'EDIT_RECORD',
-              details: `Edited ${productName} (${process}) on ${date}`
+              details: `Edited ${productName} on ${normalizedDate}`
             });
-            window.dispatchEvent(new CustomEvent('app-notification', { 
-              detail: { message: 'PRODUCTION RECORD UPDATED', type: 'success' } 
-            }));
         } else {
             if (tab === 'Plan') {
                 const newEntry: ProductionEntry = {
                     id: Date.now().toString(),
-                    date, category, process, productName, 
+                    date: normalizedDate, 
+                    category, process, productName, 
                     planQuantity: parseInt(quantity), actualQuantity: 0,
                     lastUpdatedBy: user!.id, updatedAt: new Date().toISOString()
                 };
                 StorageService.saveProductionData([...currentData, newEntry]);
-                StorageService.addLog({
-                  userId: user!.id,
-                  userName: user!.name,
-                  action: 'CREATE_PLAN',
-                  details: `Created new plan for ${productName}: ${quantity} units`
-                });
-                window.dispatchEvent(new CustomEvent('app-notification', { 
-                  detail: { message: 'PRODUCTION PLAN SUBMITTED', type: 'success' } 
-                }));
             } else {
                 if (!selectedPlanId) throw new Error("Please select a plan");
-                const targetPlan = currentData.find(p => p.id === selectedPlanId);
                 const updated = currentData.map(p => {
                     if (p.id === selectedPlanId) {
                         return { 
@@ -139,18 +131,13 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                     return p;
                 });
                 StorageService.saveProductionData(updated);
-                StorageService.addLog({
-                  userId: user!.id,
-                  userName: user!.name,
-                  action: 'RECORD_ACTUAL',
-                  details: `Recorded actual production for ${targetPlan?.productName}: ${quantity} units`
-                });
-                window.dispatchEvent(new CustomEvent('app-notification', { 
-                  detail: { message: 'ACTUAL PRODUCTION RECORDED', type: 'success' } 
-                }));
             }
         }
 
+        window.dispatchEvent(new CustomEvent('app-notification', { 
+            detail: { message: 'PRODUCTION RECORD SYNCHRONIZED', type: 'success' } 
+        }));
+        
         triggerRefresh();
         onClose();
     } catch (err: any) {
@@ -168,7 +155,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
         {isSubmitting && (
             <div className="absolute inset-0 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
                 <Loader2 className="w-10 h-10 text-indigo-600 animate-spin mb-2" />
-                <p className="text-xs font-black uppercase tracking-widest text-indigo-600">Syncing with system...</p>
+                <p className="text-xs font-black uppercase tracking-widest text-indigo-600">Uploading to Cloud...</p>
             </div>
         )}
 
@@ -190,7 +177,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
               </>
             ) : (
               <div className="flex-1 py-4 font-black text-[11px] uppercase tracking-widest text-center text-indigo-600 border-b-2 border-indigo-600">
-                Editing Record
+                Updating Record
               </div>
             )}
         </div>
@@ -209,7 +196,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                           <Palmtree className="w-4 h-4" />
                         </div>
                         <div className="flex-1">
-                          <p className="text-[10px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest leading-none mb-1">System Warning</p>
+                          <p className="text-[10px] font-black text-amber-700 dark:text-amber-400 uppercase tracking-widest leading-none mb-1">Public Holiday</p>
                           <p className="text-xs font-black text-slate-900 dark:text-amber-50">{currentOffDay.description || 'OFF DAY'}</p>
                         </div>
                         <AlertTriangle className="w-5 h-5 text-amber-500" />
@@ -239,7 +226,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                              <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Plan Qty</label>
+                              <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Quantity</label>
                               <input type="number" required min="1" value={quantity} onChange={e => setQuantity(e.target.value)} className={inputClasses} />
                           </div>
                           {editEntry && (
@@ -249,6 +236,12 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                             </div>
                           )}
                         </div>
+                        {editEntry && (
+                          <div>
+                              <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Batch Number</label>
+                              <input type="text" value={batchNo} onChange={e => setBatchNo(e.target.value)} className={inputClasses} />
+                          </div>
+                        )}
                     </>
                 ) : (
                     <>
@@ -296,7 +289,7 @@ export const InputModal: React.FC<InputModalProps> = ({ onClose, editEntry }) =>
                         'bg-emerald-600 shadow-emerald-500/10'
                     }`}
                 >
-                    {isSubmitting ? 'Syncing...' : (!!currentOffDay && !editEntry ? 'Holiday Entry Locked' : (editEntry ? 'Save Changes' : `Confirm ${tab} Entry`))}
+                    {isSubmitting ? 'Syncing...' : (!!currentOffDay && !editEntry ? 'Holiday Entry Locked' : 'Update System')}
                 </button>
             </form>
         </div>
